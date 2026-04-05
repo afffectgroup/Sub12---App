@@ -11,6 +11,13 @@ export interface Workout {
   completed: boolean;
 }
 
+export interface SecondaryRace {
+  name: string;
+  location: string;
+  date: string;
+  objective: string;
+}
+
 export interface AthleteProfile {
   name: string;
   targetRace: string;
@@ -26,7 +33,7 @@ export interface AthleteProfile {
   height?: number;
   age?: number;
   profession?: string;
-  secondaryRaces?: string[];
+  secondaryRaces?: SecondaryRace[];
   avatarUrl?: string;
   stravaConnected?: boolean;
   stravaId?: number;

@@ -49,7 +49,7 @@ import {
 } from 'recharts';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
-import { AthleteProfile, Workout, ChatMessage, Sport } from './types';
+import { AthleteProfile, Workout, ChatMessage, Sport, SecondaryRace } from './types';
 import { generateTrainingPlan, getCoachAdvice, generateSpeech } from './services/gemini';
 import { 
   auth, 
@@ -923,6 +923,31 @@ export default function App() {
                   </button>
                 </div>
               </div>
+
+              {/* Secondary Races Objectives */}
+              {(profile.secondaryRaces || []).length > 0 && (
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                  <h3 className="font-bold text-sm mb-4 flex items-center gap-2">
+                    <Trophy size={16} className="text-orange-600" />
+                    <span className="mono-label">Objectifs Intermédiaires</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {profile.secondaryRaces?.map((race, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold">{race.name}</span>
+                          <span className="text-[10px] text-slate-400">{race.location} • {race.date}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
+                            {race.objective}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -1432,33 +1457,68 @@ export default function App() {
                       <span className="mono-label">Courses Secondaires</span>
                     </h3>
                     <button 
-                      onClick={() => saveProfile({...profile, secondaryRaces: [...(profile.secondaryRaces || []), 'Nouvelle course']})}
+                      onClick={() => saveProfile({...profile, secondaryRaces: [...(profile.secondaryRaces || []), { name: 'Nouvelle course', location: '', date: '', objective: '' }]})}
                       className="text-orange-600 hover:bg-orange-50 p-1 rounded-md transition-colors"
                     >
                       <Plus size={16} />
                     </button>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {(profile.secondaryRaces || []).map((race, idx) => (
-                      <div key={idx} className="flex gap-2">
+                      <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                        <div className="flex gap-2">
+                          <input 
+                            placeholder="Nom de la course"
+                            value={race.name}
+                            onChange={e => {
+                              const newRaces = [...(profile.secondaryRaces || [])];
+                              newRaces[idx] = { ...race, name: e.target.value };
+                              saveProfile({...profile, secondaryRaces: newRaces});
+                            }}
+                            className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-1 focus:ring-orange-500 outline-none"
+                          />
+                          <button 
+                            onClick={() => {
+                              const newRaces = (profile.secondaryRaces || []).filter((_, i) => i !== idx);
+                              saveProfile({...profile, secondaryRaces: newRaces});
+                            }}
+                            className="text-slate-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input 
+                            placeholder="Lieu"
+                            value={race.location}
+                            onChange={e => {
+                              const newRaces = [...(profile.secondaryRaces || [])];
+                              newRaces[idx] = { ...race, location: e.target.value };
+                              saveProfile({...profile, secondaryRaces: newRaces});
+                            }}
+                            className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[10px] font-medium focus:ring-1 focus:ring-orange-500 outline-none"
+                          />
+                          <input 
+                            type="date"
+                            value={race.date}
+                            onChange={e => {
+                              const newRaces = [...(profile.secondaryRaces || [])];
+                              newRaces[idx] = { ...race, date: e.target.value };
+                              saveProfile({...profile, secondaryRaces: newRaces});
+                            }}
+                            className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[10px] font-medium focus:ring-1 focus:ring-orange-500 outline-none"
+                          />
+                        </div>
                         <input 
-                          value={race}
+                          placeholder="Objectif (ex: Finisher, Sub 4h...)"
+                          value={race.objective}
                           onChange={e => {
                             const newRaces = [...(profile.secondaryRaces || [])];
-                            newRaces[idx] = e.target.value;
+                            newRaces[idx] = { ...race, objective: e.target.value };
                             saveProfile({...profile, secondaryRaces: newRaces});
                           }}
-                          className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-orange-500 outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[10px] font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                         />
-                        <button 
-                          onClick={() => {
-                            const newRaces = (profile.secondaryRaces || []).filter((_, i) => i !== idx);
-                            saveProfile({...profile, secondaryRaces: newRaces});
-                          }}
-                          className="text-slate-300 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
                       </div>
                     ))}
                     {(profile.secondaryRaces || []).length === 0 && (
@@ -1498,24 +1558,10 @@ export default function App() {
                         {profile.stravaConnected ? 'Connecté' : 'Connecter'}
                       </button>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-[#007CC3] rounded-md flex items-center justify-center text-white">
-                          <Activity size={18} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold">Garmin Connect</p>
-                          <p className="text-[10px] text-slate-400">Données biométriques & plans</p>
-                        </div>
-                      </div>
-                      <button className="text-[10px] font-bold text-orange-600 bg-white border border-orange-200 px-3 py-1 rounded-md hover:bg-orange-50 transition-all">
-                        Connecter
-                      </button>
-                    </div>
+                    <p className="text-[10px] text-slate-400 italic leading-relaxed">
+                      La connexion à Strava permet à Sub12 d'analyser ta fatigue réelle et d'ajuster ton plan automatiquement.
+                    </p>
                   </div>
-                  <p className="text-[10px] text-slate-400 italic leading-relaxed">
-                    La connexion à Strava ou Garmin permet à Sub12 d'analyser ta fatigue réelle et d'ajuster ton plan automatiquement.
-                  </p>
                 </div>
               </div>
             </motion.div>

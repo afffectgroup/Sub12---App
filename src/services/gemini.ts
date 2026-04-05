@@ -43,7 +43,7 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
     Profil: ${profile.fitnessLevel}, Objectif d'heures hebdo: ${profile.weeklyHoursGoal}h.
     Âge: ${profile.age}, Poids: ${profile.weight}kg, Taille: ${profile.height}cm.
     Métier: ${profile.profession}.
-    Courses secondaires: ${(profile.secondaryRaces || []).join(', ')}.
+    Courses secondaires: ${(profile.secondaryRaces || []).map(r => `${r.name} (${r.date} à ${r.location}, Objectif: ${r.objective})`).join(', ')}.
     Expérience: ${profile.experience}.
     ${historyContext}
     
