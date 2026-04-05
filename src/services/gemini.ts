@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
+import { GoogleGenAI, Type, FunctionDeclaration, Modality } from "@google/genai";
 import { AthleteProfile, Workout, ChatMessage } from "../types";
 
 const apiKey = process.env.GEMINI_API_KEY as string;
@@ -47,63 +47,80 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
     Expérience: ${profile.experience}.
     ${historyContext}
     
-    Retourne un tableau JSON d'objets Workout avec les propriétés suivantes:
-    - id: string unique
-    - date: string (format YYYY-MM-DD, commence par aujourd'hui)
-    - sport: 'Swim' | 'Bike' | 'Run' | 'Strength' | 'Rest'
-    - title: titre court de la séance
-    - description: détails de la séance (échauffement, corps de séance, récup)
-    - durationMinutes: nombre
-    - intensity: 'Low' | 'Moderate' | 'High' | 'Intervals'
-    - completed: false
+    IMPORTANT: 
+    - Le plan doit commencer aujourd'hui (${new Date().toISOString().split('T')[0]}).
+    - Chaque séance doit avoir un ID unique (ex: "workout-1", "workout-2", etc.).
+    - Respecte strictement le format JSON demandé.
+    - Si l'athlète est fatigué ou a des contraintes (voir historique), adapte le plan en conséquence.
+    - Inclus des séances variées (Z2, Seuil, Intervalles, Renforcement, Repos).
   `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            date: { type: Type.STRING },
-            sport: { type: Type.STRING },
-            title: { type: Type.STRING },
-            description: { type: Type.STRING },
-            durationMinutes: { type: Type.NUMBER },
-            intensity: { type: Type.STRING },
-            completed: { type: Type.BOOLEAN },
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING, description: "ID unique de la séance" },
+              date: { type: Type.STRING, description: "Date au format YYYY-MM-DD" },
+              sport: { 
+                type: Type.STRING, 
+                enum: ['Swim', 'Bike', 'Run', 'Strength', 'Rest'],
+                description: "Type de sport" 
+              },
+              title: { type: Type.STRING, description: "Titre court" },
+              description: { type: Type.STRING, description: "Détails techniques (échauffement, corps, récup)" },
+              durationMinutes: { type: Type.NUMBER, description: "Durée totale en minutes" },
+              intensity: { 
+                type: Type.STRING, 
+                enum: ['Low', 'Moderate', 'High', 'Intervals'],
+                description: "Intensité de la séance" 
+              },
+              completed: { type: Type.BOOLEAN, description: "Toujours false par défaut" },
+            },
+            required: ["id", "date", "sport", "title", "description", "durationMinutes", "intensity", "completed"],
           },
-          required: ["id", "date", "sport", "title", "description", "durationMinutes", "intensity", "completed"],
         },
       },
-    },
-  });
+    });
 
-  try {
-    return JSON.parse(response.text || "[]");
-  } catch (e) {
-    console.error("Failed to parse training plan", e);
+    const text = response.text;
+    console.log("Gemini Plan Response:", text);
+    if (!text) {
+      console.error("Empty response from Gemini");
+      return [];
+    }
+    
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Error generating training plan:", error);
     return [];
   }
 }
 
 export async function getCoachAdvice(message: string, history: { role: 'user' | 'model', content: string }[], profile: AthleteProfile) {
   const systemInstruction = `
-    Tu es un coach expert en endurance (Ironman, Marathon, Ultra-trail). 
-    Ton athlète s'appelle ${profile.name}. 
-    Il prépare un ${profile.targetRace} pour le ${profile.raceDate}.
-    Niveau: ${profile.fitnessLevel}.
-    Âge: ${profile.age}, Poids: ${profile.weight}kg, Taille: ${profile.height}cm.
-    Métier: ${profile.profession}.
-    Courses secondaires: ${(profile.secondaryRaces || []).join(', ')}.
-    Sois encourageant, technique et précis. 
-    Utilise des termes de triathlon (Z2, FTP, TSS, Allure course, etc.).
-    Si l'athlète est fatigué ou blessé, conseille toujours la prudence et le repos.
-    Tu as la capacité de mettre à jour son planning d'entraînement si nécessaire via l'outil updateWorkouts.
+    Tu es "Coach Sub12", l'IA d'élite dédiée aux entrepreneurs et cadres qui visent le Sub12 sur Ironman (ou performance équivalente en endurance).
+    Ton athlète s'appelle ${profile.name}. Utilise son prénom régulièrement pour créer une relation de confiance.
+    Objectif principal: ${profile.targetRace} (${profile.raceDate}).
+    Profil: ${profile.fitnessLevel}, Métier: ${profile.profession}.
+    
+    TON ADN:
+    1. EMPATHIE ENTREPRENEURIALE: Tu comprends que son temps est sa ressource la plus rare. Si son agenda explose, adapte le plan, ne le culpabilise pas.
+    2. PRÉCISION TECHNIQUE: Parle de FTP, TSS, VMA, Allure course, Z2, Seuil. Sois le coach que tu paierais 500€/mois.
+    3. STRATÉGIE "SUB12": Ton but est l'efficience maximale. Pas de "junk miles". Chaque séance doit avoir un but précis.
+    4. PSYCHOLOGIE: Encourage la discipline, mais rappelle que le repos fait partie de l'entraînement.
+    
+    RÈGLES D'OR:
+    - Si fatigue/douleur: Prudence absolue. Suggère du repos ou une séance très légère.
+    - Style: Direct, motivant, expert, concis. Pas de blabla inutile.
+    - Tu peux modifier son planning via updateWorkouts si la situation l'exige.
+    - Termine souvent par une question courte pour maintenir l'engagement.
   `;
 
   const response = await ai.models.generateContent({
@@ -122,4 +139,26 @@ export async function getCoachAdvice(message: string, history: { role: 'user' | 
     text: response.text,
     functionCalls: response.functionCalls
   };
+}
+
+export async function generateSpeech(text: string): Promise<string | undefined> {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: `Dis de manière motivante et professionnelle: ${text}` }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Zephyr' },
+          },
+        },
+      },
+    });
+
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  } catch (error) {
+    console.error("TTS Error:", error);
+    return undefined;
+  }
 }

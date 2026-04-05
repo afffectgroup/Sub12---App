@@ -1,5 +1,5 @@
 {
-  "name": "Sub12",
-  "description": "L'intelligence artificielle au service de votre performance endurance. Plans adaptatifs Marathon & Ironman avec coaching vocal.",
+  "name": "Sub12 - AI Endurance Coach",
+  "description": "La plateforme de coaching d'endurance ultra-personnalisée propulsée par l'IA. Plans adaptatifs Marathon & Ironman, analyse Strava et coaching vocal pour entrepreneurs et cadres.",
   "requestFramePermissions": ["microphone"]
 }

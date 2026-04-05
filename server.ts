@@ -14,7 +14,7 @@ const db = getFirestore(appFirebase, firebaseConfig.firestoreDatabaseId);
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = parseInt(process.env.PORT || "3000", 10);
 
   app.use(express.json());
   app.use(cookieParser());
@@ -38,7 +38,7 @@ async function startServer() {
     }
 
     // Use the host from the request, ensuring it's the external one
-    const host = req.get("x-forwarded-host") || req.get("host");
+    const host = process.env.STRAVA_DOMAIN || req.get("x-forwarded-host") || req.get("host");
     const protocol = req.get("x-forwarded-proto") || "https";
     const redirectUri = `${protocol}://${host}/auth/strava/callback`;
     

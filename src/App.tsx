@@ -28,7 +28,10 @@ import {
   Camera,
   LogOut,
   LogIn,
-  AlertCircle
+  AlertCircle,
+  Mic,
+  MicOff,
+  Volume2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, differenceInDays, parseISO, addDays, isSameDay } from 'date-fns';
@@ -47,7 +50,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { AthleteProfile, Workout, ChatMessage, Sport } from './types';
-import { generateTrainingPlan, getCoachAdvice } from './services/gemini';
+import { generateTrainingPlan, getCoachAdvice, generateSpeech } from './services/gemini';
 import { 
   auth, 
   db, 
@@ -195,6 +198,72 @@ export default function App() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'fr-FR';
+
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        handleSendMessage(transcript);
+        setIsRecording(false);
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsRecording(false);
+      };
+    }
+  }, []);
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop();
+    } else {
+      recognitionRef.current?.start();
+      setIsRecording(true);
+    }
+  };
+
+  const playCoachResponse = async (text: string) => {
+    if (isSpeaking) {
+      audioRef.current?.pause();
+      setIsSpeaking(false);
+      return;
+    }
+
+    try {
+      setIsSpeaking(true);
+      const base64Audio = await generateSpeech(text);
+      if (base64Audio) {
+        const audioUrl = `data:audio/mp3;base64,${base64Audio}`;
+        if (audioRef.current) {
+          audioRef.current.src = audioUrl;
+        } else {
+          audioRef.current = new Audio(audioUrl);
+        }
+        audioRef.current.play();
+        audioRef.current.onended = () => setIsSpeaking(false);
+      } else {
+        setIsSpeaking(false);
+      }
+    } catch (error) {
+      console.error("Failed to play audio", error);
+      setIsSpeaking(false);
+    }
+  };
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
 
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -248,7 +317,7 @@ export default function App() {
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       const origin = event.origin;
-      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) {
+      if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.includes('sub12.fr')) {
         return;
       }
       
@@ -296,6 +365,7 @@ export default function App() {
         }
       } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
         console.error('OAuth Error:', event.data.error);
+        alert(`Erreur d'authentification : ${event.data.error}`);
       }
     };
     window.addEventListener('message', handleMessage);
@@ -367,8 +437,9 @@ export default function App() {
         'strava_oauth',
         'width=600,height=700'
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('Strava connect error:', error);
+      alert(`Erreur de connexion Strava : ${error.message}`);
     }
   };
 
@@ -388,13 +459,23 @@ export default function App() {
     setIsGeneratingPlan(true);
     try {
       const newWorkouts = await generateTrainingPlan(profile, chatHistory);
+      if (!newWorkouts || newWorkouts.length === 0) {
+        alert("Désolé, je n'ai pas pu générer de plan. Peux-tu réessayer ?");
+        return;
+      }
+      
+      // Clear old workouts or just add new ones? 
+      // Usually, generating a new plan means replacing the current week.
       for (const workout of newWorkouts) {
         const path = `users/${user.uid}/workouts/${workout.id}`;
-        await setDoc(doc(db, path), workout);
+        await setDoc(doc(db, path), { ...workout, updatedAt: Date.now() });
       }
+      
       setActiveTab('plan');
+      alert("Ton nouveau plan d'entraînement est prêt !");
     } catch (error) {
-      console.error(error);
+      console.error("Plan generation error:", error);
+      alert("Une erreur est survenue lors de la génération du plan.");
     } finally {
       setIsGeneratingPlan(false);
     }
@@ -460,6 +541,9 @@ export default function App() {
       if (text) {
         const modelMsg: ChatMessage = { role: 'model', content: text, timestamp: Date.now() };
         await setDoc(doc(db, `users/${user.uid}/messages/${Date.now() + 1}`), modelMsg);
+        
+        // Auto-play coach response
+        playCoachResponse(text);
       }
     } catch (error) {
       console.error(error);
@@ -1118,7 +1202,7 @@ export default function App() {
                     msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start"
                   )}>
                     <div className={cn(
-                      "p-3 rounded-lg text-xs leading-relaxed",
+                      "p-3 rounded-lg text-xs leading-relaxed group relative",
                       msg.role === 'user' 
                         ? "bg-slate-900 text-white rounded-tr-none" 
                         : "bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200"
@@ -1128,6 +1212,15 @@ export default function App() {
                           {msg.content}
                         </ReactMarkdown>
                       </div>
+                      {msg.role === 'model' && (
+                        <button 
+                          onClick={() => playCoachResponse(msg.content)}
+                          className="absolute -right-8 top-0 p-1.5 text-slate-300 hover:text-orange-600 transition-colors"
+                          title="Écouter la réponse"
+                        >
+                          <Volume2 size={14} className={isSpeaking ? "animate-pulse text-orange-600" : ""} />
+                        </button>
+                      )}
                     </div>
                     <span className="mono-label text-slate-400 mt-1">
                       {msg.role === 'user' ? 'Athlète' : 'Coach'} • {format(msg.timestamp, 'HH:mm')}
@@ -1158,6 +1251,16 @@ export default function App() {
                     placeholder="Message au coach..."
                     className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-orange-500 outline-none transition-all"
                   />
+                  <button 
+                    type="button"
+                    onClick={toggleRecording}
+                    className={cn(
+                      "w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm",
+                      isRecording ? "bg-red-500 text-white animate-pulse" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    )}
+                  >
+                    {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
+                  </button>
                   <button 
                     type="submit"
                     disabled={isLoading}
@@ -1421,30 +1524,30 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-2 z-40">
-        <div className="max-w-md mx-auto flex justify-between items-center">
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-white/80 backdrop-blur-xl border border-white/20 px-6 py-3 z-40 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
+        <div className="flex justify-between items-center">
           <NavButton 
             active={activeTab === 'dashboard'} 
             onClick={() => setActiveTab('dashboard')} 
-            icon={<Zap size={18} />} 
+            icon={<LayoutGrid size={20} />} 
             label="Home" 
           />
           <NavButton 
             active={activeTab === 'plan'} 
             onClick={() => setActiveTab('plan')} 
-            icon={<Calendar size={18} />} 
+            icon={<Calendar size={20} />} 
             label="Plan" 
           />
           <NavButton 
             active={activeTab === 'coach'} 
             onClick={() => setActiveTab('coach')} 
-            icon={<MessageSquare size={18} />} 
+            icon={<MessageSquare size={20} />} 
             label="Coach" 
           />
           <NavButton 
             active={activeTab === 'profile'} 
             onClick={() => setActiveTab('profile')} 
-            icon={<User size={18} />} 
+            icon={<User size={20} />} 
             label="Profil" 
           />
         </div>
@@ -1541,21 +1644,24 @@ function NavButton({ active, onClick, icon, label }: { active: boolean; onClick:
     <button 
       onClick={onClick}
       className={cn(
-        "flex flex-col items-center gap-1 transition-all duration-300 relative",
+        "flex flex-col items-center gap-1 transition-all duration-300 relative group",
         active ? "text-orange-600" : "text-slate-400 hover:text-slate-600"
       )}
     >
       <div className={cn(
-        "p-1.5 rounded-lg transition-all",
-        active && "bg-orange-50"
+        "p-2 rounded-xl transition-all duration-300",
+        active ? "bg-orange-50 shadow-sm" : "group-hover:bg-slate-50"
       )}>
         {icon}
       </div>
-      <span className="mono-label text-[8px]">{label}</span>
+      <span className={cn(
+        "mono-label text-[9px] font-bold tracking-wider uppercase",
+        active ? "opacity-100" : "opacity-60"
+      )}>{label}</span>
       {active && (
         <motion.div 
           layoutId="nav-indicator"
-          className="absolute -bottom-1 w-1 h-1 bg-orange-600 rounded-full"
+          className="absolute -bottom-1.5 w-1 h-1 bg-orange-600 rounded-full shadow-[0_0_8px_rgba(234,88,12,0.6)]"
         />
       )}
     </button>
