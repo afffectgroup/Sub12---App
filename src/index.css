@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  /* Refined rounding for a less "childish" look */
+  --radius-3xl: 1rem;
+  --radius-2xl: 0.75rem;
+  --radius-xl: 0.5rem;
+}
+
+@layer base {
+  body {
+    @apply font-sans antialiased bg-slate-50 text-slate-900;
+  }
+}
+
+.prose {
+  @apply max-w-none;
+}
+
+.prose p {
+  @apply mb-4 leading-relaxed text-slate-700;
+}
+
+.prose strong {
+  @apply font-bold text-orange-600;
+}
+
+.prose ul {
+  @apply list-disc pl-5 mb-4 space-y-1 text-slate-700;
+}
+
+/* Technical accents */
+.mono-label {
+  @apply font-mono text-[10px] uppercase tracking-wider font-medium;
+}
+

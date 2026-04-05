@@ -1,0 +1,5 @@
+{
+  "name": "Sub12",
+  "description": "L'intelligence artificielle au service de votre performance endurance. Plans adaptatifs Marathon & Ironman avec coaching vocal.",
+  "requestFramePermissions": ["microphone"]
+}

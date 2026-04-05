@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "AthleteProfile": {
+      "title": "Athlete Profile",
+      "description": "User profile containing athlete details and goals.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string" },
+        "targetRace": { "type": "string" },
+        "raceDate": { "type": "string", "format": "date" },
+        "weeklyHoursGoal": { "type": "number" },
+        "fitnessLevel": { "type": "string", "enum": ["Beginner", "Intermediate", "Advanced"] },
+        "experience": { "type": "string" },
+        "goalMode": { "type": "string", "enum": ["Finisher", "Chrono"] },
+        "onboarded": { "type": "boolean" },
+        "isPremium": { "type": "boolean" },
+        "progressionScore": { "type": "number" },
+        "weight": { "type": "number" },
+        "height": { "type": "number" },
+        "age": { "type": "number" },
+        "profession": { "type": "string" },
+        "secondaryRaces": { "type": "array", "items": { "type": "string" } },
+        "avatarUrl": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "targetRace", "raceDate", "weeklyHoursGoal", "fitnessLevel", "goalMode", "onboarded"]
+    },
+    "Workout": {
+      "title": "Workout",
+      "description": "A single training session.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner UID" },
+        "date": { "type": "string", "format": "date" },
+        "sport": { "type": "string", "enum": ["Swim", "Bike", "Run", "Strength", "Rest"] },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "intensity": { "type": "string", "enum": ["Low", "Moderate", "High", "Intervals"] },
+        "completed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "date", "sport", "title", "durationMinutes", "intensity", "completed"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "Message in the coach chat history.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User UID" },
+        "role": { "type": "string", "enum": ["user", "model"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["uid", "role", "content", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "AthleteProfile",
+      "description": "User profile document."
+    },
+    "/users/{uid}/workouts/{workoutId}": {
+      "schema": "Workout",
+      "description": "User's training plan."
+    },
+    "/users/{uid}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "User's chat history with the coach."
+    }
+  }
+}

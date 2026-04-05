@@ -1,0 +1,144 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: /users/{uid}
+// Document ID: {uid} (Auth UID)
+// Fields:
+//   - uid: string (required, immutable)
+//   - name: string (required)
+//   - targetRace: string (required)
+//   - raceDate: string (required, format: date)
+//   - weeklyHoursGoal: number (required)
+//   - fitnessLevel: string (required, enum: Beginner, Intermediate, Advanced)
+//   - goalMode: string (required, enum: Finisher, Chrono)
+//   - onboarded: boolean (required)
+//   - isPremium: boolean (optional)
+//   - progressionScore: number (optional)
+//   - weight: number (optional)
+//   - height: number (optional)
+//   - age: number (optional)
+//   - profession: string (optional)
+//   - secondaryRaces: list (optional)
+//   - avatarUrl: string (optional)
+//
+// Collection: /users/{uid}/workouts/{workoutId}
+// Fields:
+//   - uid: string (required, immutable)
+//   - date: string (required, format: date)
+//   - sport: string (required, enum: Swim, Bike, Run, Strength, Rest)
+//   - title: string (required)
+//   - description: string (required)
+//   - durationMinutes: number (required)
+//   - intensity: string (required, enum: Low, Moderate, High, Intervals)
+//   - completed: boolean (required)
+//
+// Collection: /users/{uid}/messages/{messageId}
+// Fields:
+//   - uid: string (required, immutable)
+//   - role: string (required, enum: user, model)
+//   - content: string (required)
+//   - timestamp: number (required)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "julien@afffect.fr" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*") || url.matches("^data:image/.*"));
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.targetRace is string && data.targetRace.size() < 100 &&
+             data.fitnessLevel in ['Beginner', 'Intermediate', 'Advanced'] &&
+             data.goalMode in ['Finisher', 'Chrono'] &&
+             data.weeklyHoursGoal is number && data.weeklyHoursGoal >= 0 && data.weeklyHoursGoal <= 168 &&
+             (!('avatarUrl' in data) || isValidUrl(data.avatarUrl));
+    }
+
+    function isValidWorkout(data) {
+      return data.uid == request.auth.uid &&
+             data.sport in ['Swim', 'Bike', 'Run', 'Strength', 'Rest'] &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.durationMinutes is number && data.durationMinutes >= 0 &&
+             data.intensity in ['Low', 'Moderate', 'High', 'Intervals'] &&
+             data.completed is bool;
+    }
+
+    function isValidMessage(data) {
+      return data.uid == request.auth.uid &&
+             data.role in ['user', 'model'] &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 5000 &&
+             data.timestamp is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && areImmutableFieldsUnchanged(['uid']);
+      allow delete: if isAdmin();
+
+      match /workouts/{workoutId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidWorkout(request.resource.data);
+        allow update: if isOwner(userId) && isValidWorkout(request.resource.data) && areImmutableFieldsUnchanged(['uid']);
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      match /messages/{messageId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidMessage(request.resource.data);
+        allow update: if isOwner(userId) && isValidMessage(request.resource.data) && areImmutableFieldsUnchanged(['uid']);
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
