@@ -87,12 +87,19 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return data.uid == request.auth.uid &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.name is string && data.name.size() < 100 &&
              data.targetRace is string && data.targetRace.size() < 100 &&
              data.fitnessLevel in ['Beginner', 'Intermediate', 'Advanced'] &&
              data.goalMode in ['Finisher', 'Chrono'] &&
              data.weeklyHoursGoal is number && data.weeklyHoursGoal >= 0 && data.weeklyHoursGoal <= 168 &&
-             (!('avatarUrl' in data) || isValidUrl(data.avatarUrl));
+             (!('avatarUrl' in data) || isValidUrl(data.avatarUrl)) &&
+             (!('onboarded' in data) || data.onboarded is bool) &&
+             (!('age' in data) || data.age is number) &&
+             (!('weight' in data) || data.weight is number) &&
+             (!('height' in data) || data.height is number) &&
+             (!('profession' in data) || data.profession is string) &&
+             (!('secondaryRaces' in data) || data.secondaryRaces is list) &&
+             (!('updatedAt' in data) || data.updatedAt is number);
     }
 
     function isValidWorkout(data) {
@@ -101,14 +108,18 @@ service cloud.firestore {
              data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
              data.durationMinutes is number && data.durationMinutes >= 0 &&
              data.intensity in ['Low', 'Moderate', 'High', 'Intervals'] &&
-             data.completed is bool;
+             data.completed is bool &&
+             (!('description' in data) || data.description is string) &&
+             (!('date' in data) || data.date is string) &&
+             (!('updatedAt' in data) || data.updatedAt is number);
     }
 
     function isValidMessage(data) {
       return data.uid == request.auth.uid &&
              data.role in ['user', 'model'] &&
              data.content is string && data.content.size() > 0 && data.content.size() < 5000 &&
-             data.timestamp is number;
+             data.timestamp is number &&
+             (!('updatedAt' in data) || data.updatedAt is number);
     }
 
     // ===============================================================

@@ -621,6 +621,16 @@ export default function App() {
             <Activity size={28} strokeWidth={2.5} />
           </div>
           
+          <div className="absolute top-4 right-4">
+            <button 
+              onClick={handleLogout}
+              className="text-slate-400 hover:text-red-500 transition-colors p-2"
+              title="Déconnexion"
+            >
+              <LogOut size={20} />
+            </button>
+          </div>
+          
           {onboardingStep === 0 && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold text-center tracking-tight">Bienvenue sur Sub12</h2>
@@ -868,7 +878,7 @@ export default function App() {
                   <TrendingUp size={16} className="text-orange-600" />
                   <span className="mono-label">Charge Hebdomadaire (TSS)</span>
                 </h3>
-                <div className="h-48 w-full">
+                <div className="h-48 w-full min-h-[192px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={[
                       { day: 'Lun', tss: 80 },
