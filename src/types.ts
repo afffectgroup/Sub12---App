@@ -40,6 +40,7 @@ export interface AthleteProfile {
 }
 
 export interface ChatMessage {
+  uid: string;
   role: 'user' | 'model';
   content: string;
   timestamp: number;

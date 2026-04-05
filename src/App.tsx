@@ -229,17 +229,32 @@ export default function App() {
   }, []);
 
   const toggleRecording = () => {
+    if (!recognitionRef.current) {
+      alert("La reconnaissance vocale n'est pas supportée par ton navigateur ou est bloquée.");
+      return;
+    }
+
     if (isRecording) {
-      recognitionRef.current?.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error("Stop error:", e);
+      }
+      setIsRecording(false);
     } else {
-      recognitionRef.current?.start();
-      setIsRecording(true);
+      try {
+        recognitionRef.current.start();
+        setIsRecording(true);
+      } catch (e) {
+        console.error("Start error:", e);
+        alert("Impossible de démarrer le micro. Vérifie les autorisations.");
+        setIsRecording(false);
+      }
     }
   };
 
   const playCoachResponse = async (text: string) => {
     if (isSpeaking) {
-      audioRef.current?.pause();
       setIsSpeaking(false);
       return;
     }
@@ -248,14 +263,29 @@ export default function App() {
       setIsSpeaking(true);
       const base64Audio = await generateSpeech(text);
       if (base64Audio) {
-        const audioUrl = `data:audio/mp3;base64,${base64Audio}`;
-        if (audioRef.current) {
-          audioRef.current.src = audioUrl;
-        } else {
-          audioRef.current = new Audio(audioUrl);
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        const binaryString = window.atob(base64Audio);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
         }
-        audioRef.current.play();
-        audioRef.current.onended = () => setIsSpeaking(false);
+        
+        // Convert PCM16 to Float32
+        const pcm16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(pcm16.length);
+        for (let i = 0; i < pcm16.length; i++) {
+          float32[i] = pcm16[i] / 32768;
+        }
+
+        const buffer = audioContext.createBuffer(1, float32.length, 24000);
+        buffer.getChannelData(0).set(float32);
+
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContext.destination);
+        source.onended = () => setIsSpeaking(false);
+        source.start();
       } else {
         setIsSpeaking(false);
       }
@@ -500,12 +530,18 @@ export default function App() {
   async function handleSendMessage(content: string) {
     if (!content.trim() || !user) return;
     
-    const userMsg: ChatMessage = { role: 'user', content, timestamp: Date.now() };
-    const userMsgPath = `users/${user.uid}/messages/${Date.now()}`;
+    const timestamp = Date.now();
+    const userMsg: ChatMessage = { 
+      uid: user.uid, 
+      role: 'user', 
+      content, 
+      timestamp 
+    };
+    const userMsgPath = `users/${user.uid}/messages/${timestamp}`;
     
     try {
-      await setDoc(doc(db, userMsgPath), userMsg);
       setIsLoading(true);
+      await setDoc(doc(db, userMsgPath), userMsg);
       setActiveTab('coach');
 
       let stravaContext = "";
@@ -530,9 +566,14 @@ export default function App() {
           if (call.name === 'updateWorkouts') {
             const { newWorkouts } = call.args as { newWorkouts: Workout[] };
             for (const workout of newWorkouts) {
-              await setDoc(doc(db, `users/${user.uid}/workouts/${workout.id}`), workout);
+              await setDoc(doc(db, `users/${user.uid}/workouts/${workout.id}`), {
+                ...workout,
+                uid: user.uid,
+                updatedAt: Date.now()
+              });
             }
             const systemMsg: ChatMessage = { 
+              uid: user.uid,
               role: 'model', 
               content: "J'ai mis à jour ton planning pour l'adapter à ta situation. Tu peux le consulter dans l'onglet Plan.", 
               timestamp: Date.now() 
@@ -543,14 +584,20 @@ export default function App() {
       }
 
       if (text) {
-        const modelMsg: ChatMessage = { role: 'model', content: text, timestamp: Date.now() };
+        const modelMsg: ChatMessage = { 
+          uid: user.uid,
+          role: 'model', 
+          content: text, 
+          timestamp: Date.now() 
+        };
         await setDoc(doc(db, `users/${user.uid}/messages/${Date.now() + 1}`), modelMsg);
         
         // Auto-play coach response
         playCoachResponse(text);
       }
     } catch (error) {
-      console.error(error);
+      console.error("Chat error:", error);
+      alert("Désolé, une erreur est survenue lors de l'envoi du message. Peux-tu réessayer ?");
     } finally {
       setIsLoading(false);
     }
