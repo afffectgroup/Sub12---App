@@ -99,7 +99,13 @@ service cloud.firestore {
              (!('height' in data) || data.height is number) &&
              (!('profession' in data) || data.profession is string) &&
              (!('secondaryRaces' in data) || data.secondaryRaces is list) &&
-             (!('updatedAt' in data) || data.updatedAt is number);
+             (!('updatedAt' in data) || data.updatedAt is number) &&
+             (!('raceDate' in data) || data.raceDate is string) &&
+             (!('experience' in data) || data.experience is string) &&
+             (!('stravaConnected' in data) || data.stravaConnected is bool) &&
+             (!('stravaId' in data) || data.stravaId is number) &&
+             (!('isPremium' in data) || data.isPremium is bool) &&
+             (!('progressionScore' in data) || data.progressionScore is number);
     }
 
     function isValidWorkout(data) {

@@ -39,7 +39,7 @@ async function startServer() {
 
     // Use the host from the request, ensuring it's the external one
     const host = process.env.STRAVA_DOMAIN || req.get("x-forwarded-host") || req.get("host");
-    const protocol = req.get("x-forwarded-proto") || "https";
+    const protocol = (req.get("x-forwarded-proto") || "https").split(',')[0].trim();
     const redirectUri = `${protocol}://${host}/auth/strava/callback`;
     
     console.log("Génération de l'URL OAuth Strava avec Client ID:", clientId);

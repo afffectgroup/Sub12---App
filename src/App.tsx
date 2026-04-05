@@ -468,7 +468,11 @@ export default function App() {
       // Usually, generating a new plan means replacing the current week.
       for (const workout of newWorkouts) {
         const path = `users/${user.uid}/workouts/${workout.id}`;
-        await setDoc(doc(db, path), { ...workout, updatedAt: Date.now() });
+        await setDoc(doc(db, path), { 
+          ...workout, 
+          uid: user.uid, // CRITICAL: Add missing uid for Firestore rules
+          updatedAt: Date.now() 
+        });
       }
       
       setActiveTab('plan');
@@ -878,7 +882,7 @@ export default function App() {
                   <TrendingUp size={16} className="text-orange-600" />
                   <span className="mono-label">Charge Hebdomadaire (TSS)</span>
                 </h3>
-                <div className="h-48 w-full min-h-[192px]">
+                <div className="h-48 w-full min-h-[192px] min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={[
                       { day: 'Lun', tss: 80 },
@@ -1427,6 +1431,45 @@ export default function App() {
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
+                  </div>
+                </div>
+
+
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                  <h3 className="font-bold text-sm flex items-center gap-2">
+                    <Activity size={16} className="text-orange-600" />
+                    <span className="mono-label">Intégrations</span>
+                  </h3>
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-10 h-10 rounded-lg flex items-center justify-center",
+                        profile.stravaConnected ? "bg-orange-100 text-orange-600" : "bg-slate-200 text-slate-400"
+                      )}>
+                        <Activity size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold">Strava</p>
+                        <p className="text-[10px] text-slate-400">
+                          {profile.stravaConnected ? "Connecté" : "Non connecté"}
+                        </p>
+                      </div>
+                    </div>
+                    {profile.stravaConnected ? (
+                      <button 
+                        onClick={() => saveProfile({...profile, stravaConnected: false, stravaId: undefined})}
+                        className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-100 transition-colors"
+                      >
+                        Déconnecter
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={handleConnectStrava}
+                        className="text-[10px] font-bold text-white bg-[#FC4C02] px-3 py-1.5 rounded-lg hover:bg-[#E34402] transition-colors"
+                      >
+                        Connecter
+                      </button>
+                    )}
                   </div>
                 </div>
 
