@@ -158,19 +158,6 @@ const SportIcon = ({ sport, className, size = 20 }: { sport: Sport; className?: 
   }
 };
 
-const IntensityBadge = ({ intensity }: { intensity: Workout['intensity'] }) => {
-  const colors = {
-    Low: 'bg-blue-100 text-blue-700 border-blue-200',
-    Moderate: 'bg-green-100 text-green-700 border-green-200',
-    High: 'bg-orange-100 text-orange-700 border-orange-200',
-    Intervals: 'bg-red-100 text-red-700 border-red-200',
-  };
-  return (
-    <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider", colors[intensity])}>
-      {intensity}
-    </span>
-  );
-};
 
 // --- Main App ---
 
@@ -1241,7 +1228,6 @@ export default function App() {
                               <SportIcon sport={todayWorkout.sport} size={12} className="text-orange-500" />
                               {todayWorkout.sport}
                             </span>
-                            <IntensityBadge intensity={todayWorkout.intensity} />
                           </div>
                         </div>
                         <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 shadow-inner">
@@ -1607,7 +1593,6 @@ export default function App() {
                           <span className="mono-label text-slate-400">
                             {format(parseISO(workout.date), 'EEE d MMM', { locale: fr })}
                           </span>
-                          <IntensityBadge intensity={workout.intensity} />
                         </div>
                         <h4 className="font-bold text-sm text-slate-900">{workout.title}</h4>
                       </div>
@@ -1725,7 +1710,6 @@ export default function App() {
                             
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-0.5">
-                                <IntensityBadge intensity={workout.intensity} />
                                 <SportIcon sport={workout.sport} className="text-orange-600" size={12} />
                               </div>
                               <h4 className="font-bold text-sm text-slate-900">{workout.title}</h4>
