@@ -17,6 +17,7 @@ export interface SecondaryRace {
   location: string;
   date: string;
   objective: string;
+  type?: 'race' | 'volume' | 'other';
 }
 
 export interface AthleteProfile {

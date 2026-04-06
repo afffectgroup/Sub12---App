@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Trophy, 
+  Target,
   Calendar, 
   MessageSquare, 
   User, 
@@ -34,7 +35,7 @@ import {
   Volume2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format, differenceInDays, parseISO, addDays, isSameDay, startOfDay } from 'date-fns';
+import { format, differenceInDays, parseISO, addDays, isSameDay, startOfDay, startOfWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { 
   LineChart, 
@@ -44,6 +45,9 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
+  BarChart,
+  Bar,
+  Cell,
   AreaChart,
   Area
 } from 'recharts';
@@ -411,6 +415,39 @@ export default function App() {
       console.error("Failed to fetch Strava activities:", error);
     }
   };
+
+  const getWeeklyTrainingData = () => {
+    const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    const startOfThisWeek = startOfWeek(new Date(), { weekStartsOn: 1 });
+    
+    return days.map((day, idx) => {
+      const date = addDays(startOfThisWeek, idx);
+      const dateStr = format(date, 'yyyy-MM-dd');
+      
+      // Planned TSS from workouts
+      const plannedWorkout = workouts.find(w => format(parseISO(w.date), 'yyyy-MM-dd') === dateStr);
+      const plannedTss = plannedWorkout?.tss || 0;
+      
+      // Real TSS from Strava
+      // Strava activities duration is in seconds. We can estimate TSS or just use duration/60
+      const dayActivities = stravaActivities.filter(a => format(parseISO(a.start_date), 'yyyy-MM-dd') === dateStr);
+      const realDuration = dayActivities.reduce((acc, curr) => acc + curr.moving_time, 0) / 60;
+      
+      // Simple TSS estimation if not provided: (duration * intensity_factor)
+      // For now let's just use duration as a proxy if TSS isn't there, or just show duration vs duration
+      // But the user asked for TSS. Let's try to estimate it or just use duration if preferred.
+      // The user said "volume of the week? compared to Strava? I want it to be compared to strava + daily objective compared to the plan so bars would be more judicious."
+      
+      return {
+        day,
+        real: Math.round(realDuration), // Using duration in minutes as volume
+        planned: plannedWorkout?.durationMinutes || 0,
+        fullDay: format(date, 'EEEE d MMMM', { locale: fr })
+      };
+    });
+  };
+
+  const weeklyData = getWeeklyTrainingData();
 
   // Strava Activities Sync
   useEffect(() => {
@@ -940,13 +977,18 @@ export default function App() {
           {onboardingStep === 1 && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold text-center tracking-tight">Ton Objectif ?</h2>
-              <div className="grid grid-cols-1 gap-2">
-                {['5K', '10K', 'Semi-Marathon', 'Marathon', 'Triathlon S/M', 'Triathlon L/XXL'].map(race => (
+              <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                {['5K', '10K', 'Semi-Marathon', 'Marathon', 'Trail', 'Hyrox', 'Triathlon S/M', 'Triathlon L/XXL', 'Autre'].map(race => (
                   <button 
                     key={race}
                     onClick={() => {
-                      saveProfile({...profile, targetRace: race});
-                      setOnboardingStep(2);
+                      if (race === 'Autre') {
+                        saveProfile({...profile, targetRace: ''});
+                        setOnboardingStep(1.5); // Special step for custom input
+                      } else {
+                        saveProfile({...profile, targetRace: race});
+                        setOnboardingStep(2);
+                      }
                     }}
                     className="p-3 bg-slate-50 rounded-lg text-left font-semibold hover:bg-orange-50 hover:text-orange-600 transition-all border border-slate-200 hover:border-orange-200"
                   >
@@ -954,6 +996,32 @@ export default function App() {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {onboardingStep === 1.5 && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold text-center tracking-tight">Ton Objectif Perso</h2>
+              <p className="text-slate-500 text-center text-xs">Ex: Courir 20km / semaine, Perte de poids...</p>
+              <input 
+                autoFocus
+                placeholder="Décris ton objectif"
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-base font-medium focus:ring-2 focus:ring-orange-500 outline-none"
+                value={profile.targetRace}
+                onChange={(e) => saveProfile({...profile, targetRace: e.target.value})}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && profile.targetRace) {
+                    setOnboardingStep(2);
+                  }
+                }}
+              />
+              <button 
+                disabled={!profile.targetRace}
+                onClick={() => setOnboardingStep(2)}
+                className="w-full bg-orange-600 text-white py-3 rounded-lg font-bold text-base hover:bg-orange-700 transition-all shadow-sm disabled:opacity-50"
+              >
+                Suivant
+              </button>
             </div>
           )}
 
@@ -1086,9 +1154,13 @@ export default function App() {
             </div>
             <button 
               onClick={() => setActiveTab('profile')}
-              className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-200 hover:bg-white hover:border-orange-500/30 hover:shadow-lg hover:shadow-orange-500/5 transition-all duration-300 group"
+              className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-200 hover:bg-white hover:border-orange-500/30 hover:shadow-lg hover:shadow-orange-500/5 transition-all duration-300 group overflow-hidden"
             >
-              <User size={20} className="text-slate-600 group-hover:text-orange-600 transition-colors" />
+              {profile.avatarUrl ? (
+                <img src={profile.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <User size={20} className="text-slate-600 group-hover:text-orange-600 transition-colors" />
+              )}
             </button>
           </div>
         </div>
@@ -1344,75 +1416,98 @@ export default function App() {
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="font-bold text-sm flex items-center gap-2">
                       <TrendingUp size={16} className="text-orange-600" />
-                      <span className="mono-label">Charge Hebdomadaire (TSS)</span>
+                      <span className="mono-label">Volume Hebdomadaire (min)</span>
                     </h3>
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full bg-orange-500" />
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">Réel</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">Réel (Strava)</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full bg-slate-200" />
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">Prévu</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">Prévu (Plan)</span>
                       </div>
                     </div>
                   </div>
                   <div className="h-48 w-full min-h-[192px] min-w-0">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={[
-                        { day: 'Lun', tss: 80, planned: 70 },
-                        { day: 'Mar', tss: 120, planned: 100 },
-                        { day: 'Mer', tss: 45, planned: 60 },
-                        { day: 'Jeu', tss: 150, planned: 140 },
-                        { day: 'Ven', tss: 0, planned: 0 },
-                        { day: 'Sam', tss: 220, planned: 200 },
-                        { day: 'Dim', tss: 180, planned: 180 },
-                      ]}>
-                        <defs>
-                          <linearGradient id="colorTss" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#ea580c" stopOpacity={0.2}/>
-                            <stop offset="95%" stopColor="#ea580c" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
+                      <BarChart data={weeklyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 600, fill: '#94a3b8', fontFamily: 'JetBrains Mono'}} />
-                        <YAxis hide />
+                        <XAxis 
+                          dataKey="day" 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{fontSize: 10, fontWeight: 600, fill: '#94a3b8', fontFamily: 'JetBrains Mono'}} 
+                        />
+                        <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
                         <Tooltip 
+                          cursor={{fill: '#f8fafc'}}
                           contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontFamily: 'JetBrains Mono', fontSize: '10px' }}
                           labelStyle={{ fontWeight: 800, color: '#ea580c' }}
+                          formatter={(value: any) => [`${value} min`, '']}
                         />
-                        <Area type="monotone" dataKey="planned" stroke="#e2e8f0" strokeWidth={2} fill="transparent" strokeDasharray="5 5" />
-                        <Area type="monotone" dataKey="tss" stroke="#ea580c" strokeWidth={3} fillOpacity={1} fill="url(#colorTss)" />
-                      </AreaChart>
+                        <Bar dataKey="planned" fill="#e2e8f0" radius={[4, 4, 0, 0]} barSize={20} />
+                        <Bar dataKey="real" fill="#ea580c" radius={[4, 4, 0, 0]} barSize={20} />
+                      </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
               </div>
 
-              {/* Secondary Races Objectives */}
-              {(profile.secondaryRaces || []).length > 0 && (
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                  <h3 className="font-bold text-sm mb-4 flex items-center gap-2">
-                    <Trophy size={16} className="text-orange-600" />
-                    <span className="mono-label">Objectifs Intermédiaires</span>
-                  </h3>
-                  <div className="space-y-3">
-                    {profile.secondaryRaces?.map((race, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-bold">{race.name}</span>
-                          <span className="text-[10px] text-slate-400">{race.location} • {race.date}</span>
+              {/* All Objectives Section */}
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                <h3 className="font-bold text-sm mb-4 flex items-center gap-2">
+                  <Trophy size={16} className="text-orange-600" />
+                  <span className="mono-label">Mes Objectifs</span>
+                </h3>
+                <div className="space-y-3">
+                  {/* Main Objective */}
+                  <div className="flex items-center justify-between p-3 bg-orange-50 rounded-xl border border-orange-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-orange-600 shadow-sm border border-orange-100">
+                        <Zap size={16} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">{profile.targetRace}</p>
+                        <p className="text-[10px] text-slate-400 font-medium">Objectif Principal • {profile.raceDate ? format(parseISO(profile.raceDate), 'd MMM yyyy', { locale: fr }) : 'Date non définie'}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-black text-orange-600 uppercase tracking-wider">{profile.goalMode}</p>
+                      <p className="text-[9px] text-slate-400 font-bold font-mono">
+                        {profile.raceDate ? `J-${daysToRace}` : '-'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Secondary Objectives */}
+                  {(profile.secondaryRaces || []).map((race, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-orange-600 shadow-sm border border-slate-100">
+                          {race.type === 'volume' ? <Activity size={16} /> : race.type === 'race' ? <Trophy size={16} /> : <Target size={16} />}
                         </div>
-                        <div className="text-right">
-                          <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
-                            {race.objective}
-                          </span>
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">{race.name}</p>
+                          <p className="text-[10px] text-slate-400 font-medium">
+                            {race.type === 'race' ? race.location : race.location} • {race.date ? format(parseISO(race.date), 'd MMM yyyy', { locale: fr }) : 'Date non définie'}
+                          </p>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-orange-600 uppercase tracking-wider">{race.objective}</p>
+                        <p className="text-[9px] text-slate-400 font-bold font-mono">
+                          {race.date ? `J-${differenceInDays(startOfDay(parseISO(race.date)), startOfDay(new Date()))}` : '-'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {(profile.secondaryRaces || []).length === 0 && !profile.targetRace && (
+                    <p className="text-[10px] text-slate-400 italic text-center py-2">Aucun objectif défini.</p>
+                  )}
                 </div>
-              )}
+              </div>
             </motion.div>
           )}
 
@@ -1879,12 +1974,24 @@ export default function App() {
                   </h3>
                   <div className="space-y-3">
                     <div>
-                      <label className="mono-label text-slate-400 block mb-1">Course cible</label>
+                      <label className="mono-label text-slate-400 block mb-1">Objectif cible</label>
                       <input 
+                        list="race-suggestions"
                         value={editingProfile.targetRace}
                         onChange={e => saveProfile({...editingProfile, targetRace: e.target.value})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
+                        placeholder="Ex: Marathon, Hyrox, Trail..."
                       />
+                      <datalist id="race-suggestions">
+                        <option value="5K" />
+                        <option value="10K" />
+                        <option value="Semi-Marathon" />
+                        <option value="Marathon" />
+                        <option value="Trail" />
+                        <option value="Hyrox" />
+                        <option value="Triathlon S/M" />
+                        <option value="Triathlon L/XXL" />
+                      </datalist>
                     </div>
                     <div>
                       <label className="mono-label text-slate-400 block mb-1">Date</label>
@@ -2015,10 +2122,10 @@ export default function App() {
                   <div className="flex justify-between items-center">
                     <h3 className="font-bold text-sm flex items-center gap-2">
                       <Calendar size={16} className="text-orange-600" />
-                      <span className="mono-label">Courses Secondaires</span>
+                      <span className="mono-label">Objectifs Intermédiaires</span>
                     </h3>
                     <button 
-                      onClick={() => saveProfile({...editingProfile, secondaryRaces: [...(editingProfile.secondaryRaces || []), { name: 'Nouvelle course', location: '', date: '', objective: '' }]})}
+                      onClick={() => saveProfile({...editingProfile, secondaryRaces: [...(editingProfile.secondaryRaces || []), { name: 'Nouvel objectif', location: '', date: '', objective: '', type: 'race' }]})}
                       className="text-orange-600 hover:bg-orange-50 p-1 rounded-md transition-colors"
                     >
                       <Plus size={16} />
@@ -2028,8 +2135,21 @@ export default function App() {
                     {(editingProfile.secondaryRaces || []).map((race, idx) => (
                       <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
                         <div className="flex gap-2">
+                          <select
+                            value={race.type || 'race'}
+                            onChange={e => {
+                              const newRaces = [...(editingProfile.secondaryRaces || [])];
+                              newRaces[idx] = { ...race, type: e.target.value as any };
+                              saveProfile({...editingProfile, secondaryRaces: newRaces});
+                            }}
+                            className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold focus:ring-1 focus:ring-orange-500 outline-none"
+                          >
+                            <option value="race">Course</option>
+                            <option value="volume">Volume</option>
+                            <option value="other">Autre</option>
+                          </select>
                           <input 
-                            placeholder="Nom de la course"
+                            placeholder="Nom de l'objectif"
                             value={race.name}
                             onChange={e => {
                               const newRaces = [...(editingProfile.secondaryRaces || [])];
@@ -2049,16 +2169,29 @@ export default function App() {
                           </button>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                          <input 
-                            placeholder="Lieu"
-                            value={race.location}
-                            onChange={e => {
-                              const newRaces = [...(editingProfile.secondaryRaces || [])];
-                              newRaces[idx] = { ...race, location: e.target.value };
-                              saveProfile({...editingProfile, secondaryRaces: newRaces});
-                            }}
-                            className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[10px] font-medium focus:ring-1 focus:ring-orange-500 outline-none"
-                          />
+                          {race.type === 'race' ? (
+                            <input 
+                              placeholder="Lieu"
+                              value={race.location}
+                              onChange={e => {
+                                const newRaces = [...(editingProfile.secondaryRaces || [])];
+                                newRaces[idx] = { ...race, location: e.target.value };
+                                saveProfile({...editingProfile, secondaryRaces: newRaces});
+                              }}
+                              className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[10px] font-medium focus:ring-1 focus:ring-orange-500 outline-none"
+                            />
+                          ) : (
+                            <input 
+                              placeholder="Période (ex: Hebdo)"
+                              value={race.location}
+                              onChange={e => {
+                                const newRaces = [...(editingProfile.secondaryRaces || [])];
+                                newRaces[idx] = { ...race, location: e.target.value };
+                                saveProfile({...editingProfile, secondaryRaces: newRaces});
+                              }}
+                              className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[10px] font-medium focus:ring-1 focus:ring-orange-500 outline-none"
+                            />
+                          )}
                           <input 
                             type="date"
                             value={race.date}
@@ -2071,7 +2204,7 @@ export default function App() {
                           />
                         </div>
                         <input 
-                          placeholder="Objectif (ex: Finisher, Sub 4h...)"
+                          placeholder={race.type === 'volume' ? "Objectif (ex: 10h, 50km...)" : "Objectif (ex: Finisher, Sub 4h...)"}
                           value={race.objective}
                           onChange={e => {
                             const newRaces = [...(editingProfile.secondaryRaces || [])];
@@ -2083,7 +2216,7 @@ export default function App() {
                       </div>
                     ))}
                     {(editingProfile.secondaryRaces || []).length === 0 && (
-                      <p className="text-[10px] text-slate-400 italic">Aucune course secondaire définie.</p>
+                      <p className="text-[10px] text-slate-400 italic">Aucun objectif défini.</p>
                     )}
                   </div>
                 </div>
