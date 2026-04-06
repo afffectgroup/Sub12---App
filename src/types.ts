@@ -20,6 +20,7 @@ export interface SecondaryRace {
 }
 
 export interface AthleteProfile {
+  uid: string;
   name: string;
   targetRace: string;
   raceDate: string;
@@ -38,6 +39,13 @@ export interface AthleteProfile {
   avatarUrl?: string;
   stravaConnected?: boolean;
   stravaId?: number;
+  strava?: {
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number;
+    athleteId: number;
+    connectedAt: number;
+  };
 }
 
 export interface ChatMessage {

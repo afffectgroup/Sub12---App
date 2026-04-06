@@ -19,6 +19,17 @@ async function startServer() {
   app.use(express.json());
   app.use(cookieParser());
 
+  app.get("/api/env", (req, res) => {
+    res.json({
+      APP_URL: process.env.APP_URL,
+      SHARED_APP_URL: process.env.SHARED_APP_URL,
+      STRAVA_DOMAIN: process.env.STRAVA_DOMAIN,
+      STRAVA_CLIENT_ID: process.env.STRAVA_CLIENT_ID ? "SET" : "NOT SET",
+      STRAVA_CLIENT_SECRET: process.env.STRAVA_CLIENT_SECRET ? "SET" : "NOT SET",
+      NODE_ENV: process.env.NODE_ENV
+    });
+  });
+
   // Helper : reconstruit le redirectUri de façon cohérente entre /url et /callback
   // Utilise STRAVA_DOMAIN en priorité (à définir dans Railway = "www.sub12.fr")
   function buildRedirectUri(req: express.Request): string {

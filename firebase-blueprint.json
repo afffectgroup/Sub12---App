@@ -68,6 +68,16 @@
     "/users/{uid}/messages/{messageId}": {
       "schema": "ChatMessage",
       "description": "User's chat history with the coach."
+    },
+    "/users/{uid}/insights/{date}": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "timestamp": { "type": "number" }
+        }
+      },
+      "description": "Daily coach insights."
     }
   }
 }

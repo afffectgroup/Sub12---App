@@ -86,7 +86,15 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
+      let allowedFields = [
+        'uid', 'name', 'targetRace', 'raceDate', 'weeklyHoursGoal', 
+        'fitnessLevel', 'experience', 'goalMode', 'onboarded', 
+        'isPremium', 'progressionScore', 'weight', 'height', 'age', 
+        'profession', 'secondaryRaces', 'avatarUrl', 'stravaConnected', 
+        'stravaId', 'strava', 'updatedAt'
+      ];
       return data.uid == request.auth.uid &&
+             hasOnlyAllowedFields(allowedFields) &&
              data.name is string && data.name.size() < 100 &&
              data.targetRace is string && data.targetRace.size() < 100 &&
              data.fitnessLevel in ['Beginner', 'Intermediate', 'Advanced'] &&
@@ -104,24 +112,34 @@ service cloud.firestore {
              (!('experience' in data) || data.experience is string) &&
              (!('stravaConnected' in data) || data.stravaConnected is bool) &&
              (!('stravaId' in data) || data.stravaId is number) &&
+             (!('strava' in data) || data.strava is map) &&
              (!('isPremium' in data) || data.isPremium is bool) &&
              (!('progressionScore' in data) || data.progressionScore is number);
     }
 
     function isValidWorkout(data) {
+      let allowedFields = [
+        'id', 'uid', 'date', 'sport', 'title', 'description', 
+        'durationMinutes', 'intensity', 'completed', 'tss', 'updatedAt'
+      ];
       return data.uid == request.auth.uid &&
+             hasOnlyAllowedFields(allowedFields) &&
              data.sport in ['Swim', 'Bike', 'Run', 'Strength', 'Rest'] &&
              data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
              data.durationMinutes is number && data.durationMinutes >= 0 &&
              data.intensity in ['Low', 'Moderate', 'High', 'Intervals'] &&
              data.completed is bool &&
+             (!('id' in data) || data.id is string) &&
              (!('description' in data) || data.description is string) &&
              (!('date' in data) || data.date is string) &&
+             (!('tss' in data) || data.tss is number) &&
              (!('updatedAt' in data) || data.updatedAt is number);
     }
 
     function isValidMessage(data) {
+      let allowedFields = ['uid', 'role', 'content', 'timestamp', 'updatedAt'];
       return data.uid == request.auth.uid &&
+             hasOnlyAllowedFields(allowedFields) &&
              data.role in ['user', 'model'] &&
              data.content is string && data.content.size() > 0 && data.content.size() < 5000 &&
              data.timestamp is number &&
@@ -150,6 +168,11 @@ service cloud.firestore {
         allow create: if isOwner(userId) && isValidMessage(request.resource.data);
         allow update: if isOwner(userId) && isValidMessage(request.resource.data) && areImmutableFieldsUnchanged(['uid']);
         allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      match /insights/{insightId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId) || isAdmin();
       }
     }
 

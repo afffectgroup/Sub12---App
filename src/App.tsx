@@ -173,6 +173,7 @@ const IntensityBadge = ({ intensity }: { intensity: Workout['intensity'] }) => {
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'plan' | 'coach' | 'profile'>('dashboard');
   const [profile, setProfile] = useState<AthleteProfile>({
+    uid: '',
     name: '',
     targetRace: 'Marathon',
     raceDate: '2026-06-07',
@@ -473,6 +474,7 @@ export default function App() {
             
             // Initialize profile with Strava data
             const initialProfile: AthleteProfile = {
+              uid: firebaseUser.uid,
               name: athlete.firstname + ' ' + athlete.lastname,
               targetRace: 'Marathon',
               raceDate: '2026-06-07',
@@ -480,23 +482,28 @@ export default function App() {
               fitnessLevel: 'Intermediate',
               experience: '',
               goalMode: 'Finisher',
-              onboarded: true, // Assume onboarded if they use Strava login for simplicity or keep false
+              onboarded: true,
               isPremium: false,
               progressionScore: 45,
               stravaConnected: true
             };
             
             // Save to Firestore using the new anonymous UID
-            await setDoc(doc(db, 'users', firebaseUser.uid), {
-              ...initialProfile,
-              stravaId: athlete.id,
-              updatedAt: Date.now()
-            });
-            
-            // Also save the Strava tokens to this new UID
-            await setDoc(doc(db, 'users', firebaseUser.uid), {
-              strava: event.data.stravaTokens
-            }, { merge: true });
+            const path = `users/${firebaseUser.uid}`;
+            try {
+              await setDoc(doc(db, path), {
+                ...initialProfile,
+                stravaId: athlete.id,
+                updatedAt: Date.now()
+              });
+              
+              // Also save the Strava tokens to this new UID
+              await setDoc(doc(db, path), {
+                strava: event.data.stravaTokens
+              }, { merge: true });
+            } catch (error) {
+              handleFirestoreError(error, OperationType.WRITE, path);
+            }
 
           } catch (error) {
             console.error("Failed to sign in with Strava:", error);
@@ -541,6 +548,7 @@ export default function App() {
     try {
       await signOut(auth);
       setProfile({
+        uid: '',
         name: '',
         targetRace: 'Marathon',
         raceDate: '2026-06-07',
@@ -588,6 +596,24 @@ export default function App() {
     setEditingProfile(newProfile);
   };
 
+  const handleOnboardingComplete = async () => {
+    if (!user) return;
+    const finalProfile = { ...profile, uid: user.uid, onboarded: true };
+    const path = `users/${user.uid}`;
+    try {
+      await setDoc(doc(db, path), {
+        ...finalProfile,
+        updatedAt: Date.now()
+      });
+      setProfile(finalProfile);
+      setEditingProfile(finalProfile);
+      handleGeneratePlan();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+      showToast("Erreur lors de la finalisation de l'onboarding", "error");
+    }
+  };
+
   const handleSaveProfile = async () => {
     if (!user || !editingProfile) return;
     const path = `users/${user.uid}`;
@@ -605,28 +631,31 @@ export default function App() {
     if (!user) return;
     setIsGeneratingPlan(true);
     try {
+      setIsGeneratingPlan(true);
       const newWorkouts = await generateTrainingPlan(profile, chatHistory);
       if (!newWorkouts || newWorkouts.length === 0) {
-        alert("Désolé, je n'ai pas pu générer de plan. Peux-tu réessayer ?");
+        showToast("Désolé, je n'ai pas pu générer de plan. Peux-tu réessayer ?", "error");
         return;
       }
       
-      // Clear old workouts or just add new ones? 
-      // Usually, generating a new plan means replacing the current week.
       for (const workout of newWorkouts) {
         const path = `users/${user.uid}/workouts/${workout.id}`;
-        await setDoc(doc(db, path), { 
-          ...workout, 
-          uid: user.uid, // CRITICAL: Add missing uid for Firestore rules
-          updatedAt: Date.now() 
-        });
+        try {
+          await setDoc(doc(db, path), { 
+            ...workout, 
+            uid: user.uid,
+            updatedAt: Date.now() 
+          });
+        } catch (error) {
+          handleFirestoreError(error, OperationType.WRITE, path);
+        }
       }
       
       setActiveTab('plan');
-      alert("Ton nouveau plan d'entraînement est prêt !");
+      showToast("Ton nouveau plan d'entraînement est prêt !");
     } catch (error) {
       console.error("Plan generation error:", error);
-      alert("Une erreur est survenue lors de la génération du plan.");
+      showToast("Une erreur est survenue lors de la génération du plan.", "error");
     } finally {
       setIsGeneratingPlan(false);
     }
@@ -984,11 +1013,7 @@ export default function App() {
                 <Loader2 className="animate-spin text-orange-600" size={32} />
               </div>
               <button 
-                onClick={() => {
-                  const finalProfile = {...profile, onboarded: true};
-                  saveProfile(finalProfile);
-                  handleGeneratePlan();
-                }}
+                onClick={handleOnboardingComplete}
                 className="w-full bg-orange-600 text-white py-3 rounded-lg font-bold text-base hover:bg-orange-700 transition-all"
               >
                 Accéder au Dashboard
