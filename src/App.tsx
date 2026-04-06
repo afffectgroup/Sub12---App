@@ -842,32 +842,27 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-24">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 px-4 py-3">
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 py-3 px-4">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center text-orange-500 shadow-sm">
-              <Activity size={22} strokeWidth={2.5} />
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-orange-500 shadow-lg shadow-orange-500/10">
+              <Activity size={24} strokeWidth={2.5} />
             </div>
             <div>
-              <h1 className="font-bold text-base leading-none tracking-tight">Sub12</h1>
-              <p className="mono-label text-slate-400 mt-0.5">Performance Engine</p>
+              <h1 className="font-black text-lg leading-none tracking-tight text-slate-900">Sub12</h1>
+              <p className="mono-label text-[10px] text-slate-400 mt-0.5 uppercase tracking-widest">Performance Engine</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            {!profile.isPremium && (
-              <button className="hidden md:block bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-slate-800 transition-colors">
-                Premium
-              </button>
-            )}
-            <div className="text-right hidden sm:block">
-              <p className="mono-label text-orange-600">{profile.targetRace}</p>
-              <p className="text-sm font-bold font-mono">D-{daysToRace}</p>
+          <div className="flex items-center gap-4">
+            <div className="text-right hidden sm:block border-r border-slate-100 pr-4">
+              <p className="mono-label text-[10px] text-orange-600 font-bold uppercase tracking-wider">{profile.targetRace}</p>
+              <p className="text-sm font-black font-mono text-slate-900">J-{daysToRace}</p>
             </div>
             <button 
               onClick={() => setActiveTab('profile')}
-              className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 hover:bg-slate-200 transition-colors"
+              className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-200 hover:bg-white hover:border-orange-500/30 hover:shadow-lg hover:shadow-orange-500/5 transition-all duration-300 group"
             >
-              <User size={20} className="text-slate-600" />
+              <User size={20} className="text-slate-600 group-hover:text-orange-600 transition-colors" />
             </button>
           </div>
         </div>
@@ -883,6 +878,92 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               className="space-y-4"
             >
+              {/* Coach Quick Insight */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm overflow-hidden relative group">
+                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                  <MessageSquare size={48} className="text-orange-600" />
+                </div>
+                <div className="flex gap-4 items-start relative z-10">
+                  <div className="w-12 h-12 rounded-full bg-orange-100 flex-shrink-0 flex items-center justify-center border-2 border-white shadow-sm">
+                    <Activity size={24} className="text-orange-600" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">Coach Sub12 Insight</h4>
+                    <p className="text-sm font-medium leading-relaxed text-slate-700">
+                      {daysToRace < 70 && profile.weeklyHoursGoal < 10 ? (
+                        <>
+                          <span className="font-bold text-slate-900">Alerte Volume :</span> {daysToRace} jours avant ton Ironman, 8.5h/semaine est un défi pour le Sub12. On va devoir optimiser chaque minute de tes séances de seuil. Prêt à monter en intensité ?
+                        </>
+                      ) : (
+                        `Salut ${profile.name}, ta charge est en hausse de 12%. C'est parfait pour cette phase de préparation. N'oublie pas de bien t'hydrater aujourd'hui.`
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Today's Workout - More Prominent */}
+              {(() => {
+                const todayWorkout = workouts.find(w => isSameDay(parseISO(w.date), new Date()));
+                if (!todayWorkout) return null;
+                
+                return (
+                  <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-orange-600/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-orange-600/20 transition-all duration-700" />
+                    <div className="relative z-10">
+                      <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
+                          <p className="mono-label text-orange-500 text-[10px] font-black uppercase tracking-widest">Séance du jour</p>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400 bg-slate-800/50 px-2 py-1 rounded-md">
+                          {format(new Date(), 'EEEE d MMMM', { locale: fr })}
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="flex-1">
+                          <h3 className="text-2xl font-black mb-2 tracking-tight leading-tight">{todayWorkout.title}</h3>
+                          <p className="text-slate-400 text-xs line-clamp-2 mb-4 font-medium leading-relaxed">
+                            {todayWorkout.description}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="flex items-center gap-1.5 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl text-[10px] font-bold">
+                              <Timer size={12} className="text-orange-500" /> {todayWorkout.durationMinutes}m
+                            </span>
+                            <span className="flex items-center gap-1.5 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl text-[10px] font-bold">
+                              {todayWorkout.sport === 'Bike' && <Bike size={12} className="text-orange-500" />}
+                              {todayWorkout.sport === 'Run' && <Footprints size={12} className="text-orange-500" />}
+                              {todayWorkout.sport === 'Swim' && <Waves size={12} className="text-orange-500" />}
+                              {todayWorkout.sport === 'Strength' && <Dumbbell size={12} className="text-orange-500" />}
+                              {todayWorkout.sport === 'Rest' && <Activity size={12} className="text-orange-500" />}
+                              {todayWorkout.sport}
+                            </span>
+                            <span className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 rounded-xl text-[10px] font-black text-orange-500 font-mono">
+                              <Zap size={12} /> {todayWorkout.intensity}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 shadow-inner">
+                          {todayWorkout.sport === 'Bike' && <Bike size={32} className="text-orange-500" />}
+                          {todayWorkout.sport === 'Run' && <Footprints size={32} className="text-orange-500" />}
+                          {todayWorkout.sport === 'Swim' && <Waves size={32} className="text-orange-500" />}
+                          {todayWorkout.sport === 'Strength' && <Dumbbell size={32} className="text-orange-500" />}
+                          {todayWorkout.sport === 'Rest' && <Activity size={32} className="text-orange-500" />}
+                        </div>
+                      </div>
+                      
+                      <button 
+                        onClick={() => setActiveTab('plan')}
+                        className="mt-6 w-full bg-white text-slate-900 py-3 rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-orange-500 hover:text-white transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-black/20"
+                      >
+                        Voir les détails <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Stats Grid */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -958,32 +1039,6 @@ export default function App() {
                       <Area type="monotone" dataKey="tss" stroke="#ea580c" strokeWidth={2} fillOpacity={1} fill="url(#colorTss)" />
                     </AreaChart>
                   </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Next Workout */}
-              <div className="bg-slate-900 rounded-xl p-5 text-white shadow-lg relative overflow-hidden">
-                <div className="relative z-10">
-                  <p className="mono-label text-orange-500 mb-2">Prochaine séance</p>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-xl font-bold mb-3 tracking-tight">Sortie Longue Endurance</h3>
-                      <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-400">
-                        <span className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-md"><Timer size={12} /> 2h 30m</span>
-                        <span className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-md"><Bike size={12} /> Vélo</span>
-                        <span className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-md text-orange-400 font-mono"><Zap size={12} /> Z2 / 180W</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-800 p-2.5 rounded-lg">
-                      <Bike size={24} className="text-orange-500" />
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setActiveTab('plan')}
-                    className="mt-5 w-full bg-orange-600 text-white py-2 rounded-lg font-bold text-xs hover:bg-orange-700 transition-colors flex items-center justify-center gap-2"
-                  >
-                    Planning complet <ChevronRight size={14} />
-                  </button>
                 </div>
               </div>
 
@@ -1672,12 +1727,12 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-4xl z-40">
-        <div className="max-w-md mx-auto bg-white/80 backdrop-blur-xl border border-white/20 px-6 py-3 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] flex justify-between items-center">
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 z-40">
+        <div className="bg-white/90 backdrop-blur-2xl border border-slate-200/50 px-8 py-3 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex justify-between items-center">
           <NavButton 
             active={activeTab === 'dashboard'} 
             onClick={() => setActiveTab('dashboard')} 
-            icon={<LayoutGrid size={20} />} 
+            icon={<LayoutGrid size={22} />} 
             label="Home" 
           />
           <NavButton 
