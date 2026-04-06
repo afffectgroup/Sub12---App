@@ -7,155 +7,112 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 import fs from "fs";
 
-// Load Firebase config
+// ─── Firebase ────────────────────────────────────────────────────────────────
 const firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
 const appFirebase = initializeApp(firebaseConfig);
 const db = getFirestore(appFirebase, firebaseConfig.firestoreDatabaseId);
 
+// ─── FIX OAUTH : URI FIXE ────────────────────────────────────────────────────
+// Cause du bug précédent : buildRedirectUri(req) reconstruisait l'URI depuis
+// les headers HTTP (x-forwarded-host, x-forwarded-proto), qui varient entre
+// la route /api/auth/strava/url et /auth/strava/callback sur Railway.
+// Deux URIs différentes = Strava refuse avec "invalid_grant".
+//
+// Solution : une constante partagée, jamais dynamique.
+// À définir dans Railway : STRAVA_REDIRECT_URI=https://www.sub12.fr/auth/strava/callback
+const STRAVA_REDIRECT_URI =
+  process.env.STRAVA_REDIRECT_URI ?? "https://www.sub12.fr/auth/strava/callback";
+
+// ─── Helpers Strava ──────────────────────────────────────────────────────────
+async function refreshStravaToken(refreshToken: string) {
+  const r = await axios.post("https://www.strava.com/oauth/token", {
+    client_id: process.env.STRAVA_CLIENT_ID,
+    client_secret: process.env.STRAVA_CLIENT_SECRET,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  });
+  return r.data;
+}
+
+async function getStravaToken(uid: string): Promise<string | null> {
+  const snap = await getDoc(doc(db, "users", uid));
+  if (!snap.exists() || !snap.data().strava) return null;
+  let { accessToken, refreshToken, expiresAt } = snap.data().strava;
+  if (Date.now() / 1000 > expiresAt - 300) {
+    try {
+      const data = await refreshStravaToken(refreshToken);
+      accessToken = data.access_token;
+      await setDoc(doc(db, "users", uid), {
+        strava: {
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresAt: data.expires_at,
+        }
+      }, { merge: true });
+    } catch (e) {
+      console.error("Strava token refresh failed:", e);
+      return null;
+    }
+  }
+  return accessToken;
+}
+
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
-
   app.use(express.json());
   app.use(cookieParser());
 
-  app.get("/api/env", (req, res) => {
-    res.json({
-      APP_URL: process.env.APP_URL,
-      SHARED_APP_URL: process.env.SHARED_APP_URL,
-      STRAVA_DOMAIN: process.env.STRAVA_DOMAIN,
-      STRAVA_CLIENT_ID: process.env.STRAVA_CLIENT_ID ? "SET" : "NOT SET",
-      STRAVA_CLIENT_SECRET: process.env.STRAVA_CLIENT_SECRET ? "SET" : "NOT SET",
-      NODE_ENV: process.env.NODE_ENV
-    });
-  });
-
-  // Helper : reconstruit le redirectUri de façon cohérente entre /url et /callback
-  // Utilise STRAVA_DOMAIN en priorité (à définir dans Railway = "www.sub12.fr")
-  function buildRedirectUri(req: express.Request): string {
-    const host = process.env.STRAVA_DOMAIN || req.get("x-forwarded-host") || req.get("host");
-    const protocol = (req.get("x-forwarded-proto") || "https").split(",")[0].trim();
-    return `${protocol}://${host}/auth/strava/callback`;
-  }
-
-  // API Routes
+  // ─── ROUTE 1 : Génère l'URL OAuth Strava ───────────────────────────────────
   app.get("/api/auth/strava/url", (req, res) => {
     const { uid, login } = req.query;
-    
     const clientId = process.env.STRAVA_CLIENT_ID?.trim();
     const clientSecret = process.env.STRAVA_CLIENT_SECRET?.trim();
 
     if (!clientId || !clientSecret) {
-      console.error("ERREUR : STRAVA_CLIENT_ID ou STRAVA_CLIENT_SECRET manquant dans les variables d'environnement.");
-      return res.status(500).json({ 
-        error: "Configuration Strava manquante. Veuillez ajouter STRAVA_CLIENT_ID et STRAVA_CLIENT_SECRET dans les Settings d'AI Studio." 
+      return res.status(500).json({
+        error: "STRAVA_CLIENT_ID ou STRAVA_CLIENT_SECRET manquant dans Railway."
       });
     }
-
     if (!uid && login !== "true") {
       return res.status(400).json({ error: "Missing uid or login flag" });
     }
 
-    const redirectUri = buildRedirectUri(req);
-    
-    console.log("Génération de l'URL OAuth Strava avec Client ID:", clientId);
-    console.log("Redirect URI:", redirectUri);
+    // Log pour debug (visible dans Railway logs)
+    console.log("[Strava OAuth] Generating URL");
+    console.log("[Strava OAuth] redirect_uri:", STRAVA_REDIRECT_URI);
+    console.log("[Strava OAuth] client_id:", clientId);
 
     const params = new URLSearchParams({
       client_id: clientId,
-      redirect_uri: redirectUri,
+      redirect_uri: STRAVA_REDIRECT_URI,  // ← constante fixe
       response_type: "code",
       scope: "read,activity:read_all",
       state: (uid as string) || "login",
     });
 
-    const authUrl = `https://www.strava.com/oauth/authorize?${params.toString()}`;
-    res.json({ url: authUrl });
+    res.json({ url: `https://www.strava.com/oauth/authorize?${params.toString()}` });
   });
 
-  async function getStravaToken(uid: string) {
-    const stravaRef = doc(db, "users", uid);
-    const docSnap = await getDoc(stravaRef);
-    if (!docSnap.exists() || !docSnap.data().strava) {
-      return null;
-    }
-
-    let { accessToken, refreshToken, expiresAt } = docSnap.data().strava;
-
-    // Check if expired (with 5 min buffer)
-    if (Date.now() / 1000 > expiresAt - 300) {
-      try {
-        const response = await axios.post("https://www.strava.com/oauth/token", {
-          client_id: process.env.STRAVA_CLIENT_ID,
-          client_secret: process.env.STRAVA_CLIENT_SECRET,
-          refresh_token: refreshToken,
-          grant_type: "refresh_token",
-        });
-
-        accessToken = response.data.access_token;
-        refreshToken = response.data.refresh_token;
-        expiresAt = response.data.expires_at;
-
-        await setDoc(stravaRef, {
-          strava: {
-            accessToken,
-            refreshToken,
-            expiresAt,
-          }
-        }, { merge: true });
-      } catch (error) {
-        console.error("Failed to refresh Strava token:", error);
-        return null;
-      }
-    }
-
-    return accessToken;
-  }
-
-  app.get("/api/strava/activities", async (req, res) => {
-    const { uid } = req.query;
-    if (!uid) return res.status(400).json({ error: "Missing uid" });
-
-    const token = await getStravaToken(uid as string);
-    if (!token) return res.status(401).json({ error: "Strava not connected or token invalid" });
-
-    try {
-      const response = await axios.get("https://www.strava.com/api/v3/athlete/activities", {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { per_page: 10 },
-      });
-      res.json(response.data);
-    } catch (error: any) {
-      console.error("Failed to fetch Strava activities:", error.response?.data || error.message);
-      res.status(500).json({ error: "Failed to fetch activities" });
-    }
-  });
-
+  // ─── ROUTE 2 : Callback Strava (échange le code contre des tokens) ─────────
   app.get(["/auth/strava/callback", "/auth/strava/callback/"], async (req, res) => {
-    const { code, state: uid } = req.query;
+    const { code, state: uid, error: stravaError } = req.query;
+
+    // Strava peut renvoyer une erreur (ex: user a refusé l'accès)
+    if (stravaError) {
+      console.error("[Strava Callback] Strava returned error:", stravaError);
+      return res.send(popupMessage("OAUTH_AUTH_ERROR", stravaError as string));
+    }
 
     if (!code || !uid) {
-      return res.send(`
-        <html>
-          <body>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: 'Missing code or state' }, '*');
-                window.close();
-              }
-            </script>
-            <p>Authentication failed. Missing code or state.</p>
-          </body>
-        </html>
-      `);
+      return res.send(popupMessage("OAUTH_AUTH_ERROR", "Missing code or state"));
     }
 
     const isLogin = uid === "login";
 
-    // FIX : redirect_uri doit être identique à celui utilisé lors de l'autorisation.
-    // Sans cette ligne, Strava répond "invalid_grant" → "Failed to exchange token".
-    const redirectUri = buildRedirectUri(req);
-    console.log("Callback redirect_uri used for token exchange:", redirectUri);
+    // Log pour vérifier que les deux URIs matchent
+    console.log("[Strava Callback] redirect_uri used for token exchange:", STRAVA_REDIRECT_URI);
+    console.log("[Strava Callback] code:", (code as string).substring(0, 8) + "...");
 
     try {
       const response = await axios.post("https://www.strava.com/oauth/token", {
@@ -163,15 +120,14 @@ async function startServer() {
         client_secret: process.env.STRAVA_CLIENT_SECRET,
         code,
         grant_type: "authorization_code",
-        redirect_uri: redirectUri,
+        redirect_uri: STRAVA_REDIRECT_URI,  // ← même constante fixe
       });
 
       const { access_token, refresh_token, expires_at, athlete } = response.data;
+      console.log("[Strava Callback] ✓ Token exchange successful for athlete:", athlete.id);
 
       if (!isLogin) {
-        // Store in Firestore for existing user
-        const stravaRef = doc(db, "users", uid as string);
-        await setDoc(stravaRef, {
+        await setDoc(doc(db, "users", uid as string), {
           strava: {
             accessToken: access_token,
             refreshToken: refresh_token,
@@ -183,50 +139,96 @@ async function startServer() {
       }
 
       res.send(`
-        <html>
-          <body>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ 
-                  type: 'OAUTH_AUTH_SUCCESS', 
-                  isLogin: ${isLogin},
-                  athlete: ${JSON.stringify(athlete)},
-                  stravaTokens: {
-                    accessToken: "${access_token}",
-                    refreshToken: "${refresh_token}",
-                    expiresAt: ${expires_at},
-                    athleteId: ${athlete.id},
-                    connectedAt: ${Date.now()}
-                  }
-                }, '*');
-                window.close();
-              } else {
-                window.location.href = '/';
+        <html><body><script>
+          if (window.opener) {
+            window.opener.postMessage({
+              type: 'OAUTH_AUTH_SUCCESS',
+              isLogin: ${isLogin},
+              athlete: ${JSON.stringify(athlete)},
+              stravaTokens: {
+                accessToken: "${access_token}",
+                refreshToken: "${refresh_token}",
+                expiresAt: ${expires_at},
+                athleteId: ${athlete.id},
+                connectedAt: ${Date.now()}
               }
-            </script>
-            <p>Authentication successful. This window should close automatically.</p>
-          </body>
-        </html>
+            }, '*');
+            window.close();
+          } else {
+            window.location.href = '/';
+          }
+        </script>
+        <p>Connexion Strava réussie. Cette fenêtre va se fermer...</p>
+        </body></html>
       `);
-    } catch (error: any) {
-      console.error("Strava OAuth error:", error.response?.data || error.message);
-      res.send(`
-        <html>
-          <body>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: 'Failed to exchange token' }, '*');
-                window.close();
-              }
-            </script>
-            <p>Authentication failed. Error exchanging token.</p>
-          </body>
-        </html>
-      `);
+    } catch (e: any) {
+      // Log l'erreur RÉELLE de Strava (pas juste "Failed to exchange token")
+      const stravaMsg = e.response?.data?.message
+        || e.response?.data?.error
+        || e.message
+        || "Unknown error";
+      console.error("[Strava Callback] ✗ Token exchange failed:", stravaMsg);
+      console.error("[Strava Callback] Full error:", JSON.stringify(e.response?.data));
+      res.send(popupMessage("OAUTH_AUTH_ERROR", stravaMsg));
     }
   });
 
-  // Vite middleware for development
+  // ─── ROUTE 3 : Activités récentes ──────────────────────────────────────────
+  app.get("/api/strava/activities", async (req, res) => {
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ error: "Missing uid" });
+    const token = await getStravaToken(uid as string);
+    if (!token) return res.status(401).json({ error: "Strava not connected" });
+    try {
+      const r = await axios.get("https://www.strava.com/api/v3/athlete/activities", {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { per_page: 20 },
+      });
+      res.json(r.data);
+    } catch (e: any) {
+      console.error("Strava activities error:", e.response?.data || e.message);
+      res.status(500).json({ error: "Failed to fetch activities" });
+    }
+  });
+
+  // ─── ROUTE 4 : Stats 7 derniers jours ──────────────────────────────────────
+  app.get("/api/strava/stats", async (req, res) => {
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ error: "Missing uid" });
+    const token = await getStravaToken(uid as string);
+    if (!token) return res.status(401).json({ error: "Strava not connected" });
+    try {
+      const snap = await getDoc(doc(db, "users", uid as string));
+      const athleteId = snap.data()?.strava?.athleteId;
+      const since7d = Math.floor(Date.now() / 1000) - 7 * 86400;
+      const [statsRes, recentRes] = await Promise.all([
+        athleteId
+          ? axios.get(`https://www.strava.com/api/v3/athletes/${athleteId}/stats`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+          : Promise.resolve({ data: null }),
+        axios.get("https://www.strava.com/api/v3/athlete/activities", {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { per_page: 15, after: since7d },
+        }),
+      ]);
+      res.json({ allTimeStats: statsRes.data, recentActivities: recentRes.data });
+    } catch (e: any) {
+      console.error("Strava stats error:", e.response?.data || e.message);
+      res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  });
+
+  // ─── ROUTE 5 : Status connexion Strava ─────────────────────────────────────
+  app.get("/api/strava/status", async (req, res) => {
+    const { uid } = req.query;
+    if (!uid) return res.json({ connected: false });
+    const snap = await getDoc(doc(db, "users", uid as string));
+    const strava = snap.data()?.strava;
+    res.json({ connected: !!strava?.refreshToken, athleteId: strava?.athleteId ?? null });
+  });
+
+  // ─── Vite / Static ─────────────────────────────────────────────────────────
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -243,7 +245,24 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Strava redirect URI: ${STRAVA_REDIRECT_URI}`);
   });
+}
+
+// ─── Helper : message postMessage pour la popup OAuth ─────────────────────
+function popupMessage(type: string, error: string): string {
+  return `
+    <html><body><script>
+      if (window.opener) {
+        window.opener.postMessage({ type: '${type}', error: ${JSON.stringify(error)} }, '*');
+        window.close();
+      } else {
+        document.write('<p>Erreur: ${error}</p><a href="/">Retour</a>');
+      }
+    </script>
+    <p>Une erreur est survenue. Fermeture...</p>
+    </body></html>
+  `;
 }
 
 startServer();
