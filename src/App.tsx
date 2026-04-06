@@ -399,22 +399,21 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const fetchStravaActivities = async () => {
+    if (!user || !profile.stravaConnected) return;
+    try {
+      const response = await fetch(`/api/strava/activities?uid=${user.uid}`);
+      if (response.ok) {
+        const data = await response.json();
+        setStravaActivities(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch Strava activities:", error);
+    }
+  };
+
   // Strava Activities Sync
   useEffect(() => {
-    if (!user || !profile.stravaConnected) return;
-
-    const fetchStravaActivities = async () => {
-      try {
-        const response = await fetch(`/api/strava/activities?uid=${user.uid}`);
-        if (response.ok) {
-          const data = await response.json();
-          setStravaActivities(data);
-        }
-      } catch (error) {
-        console.error("Failed to fetch Strava activities:", error);
-      }
-    };
-
     fetchStravaActivities();
   }, [user, profile.stravaConnected]);
 
@@ -545,7 +544,12 @@ export default function App() {
             console.error("Failed to sign in with Strava:", error);
           }
         } else {
-          saveProfile({ ...profile, stravaConnected: true });
+          const updatedProfile = { ...profile, stravaConnected: true };
+          setProfile(updatedProfile);
+          setEditingProfile(updatedProfile);
+          showToast("Strava connecté avec succès !");
+          // Trigger immediate fetch
+          setTimeout(fetchStravaActivities, 1000);
         }
       } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
         console.error('OAuth Error:', event.data.error);
@@ -640,7 +644,7 @@ export default function App() {
       await setDoc(doc(db, path), {
         ...finalProfile,
         updatedAt: Date.now()
-      });
+      }, { merge: true });
       setProfile(finalProfile);
       setEditingProfile(finalProfile);
       handleGeneratePlan();
@@ -654,7 +658,7 @@ export default function App() {
     if (!user || !editingProfile) return;
     const path = `users/${user.uid}`;
     try {
-      await setDoc(doc(db, path), { ...editingProfile, uid: user.uid, updatedAt: Date.now() });
+      await setDoc(doc(db, path), { ...editingProfile, uid: user.uid, updatedAt: Date.now() }, { merge: true });
       setProfile(editingProfile);
       showToast("Profil mis à jour avec succès !");
     } catch (error) {

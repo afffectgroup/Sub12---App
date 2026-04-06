@@ -72,13 +72,20 @@ async function startServer() {
   });
 
   async function getStravaToken(uid: string) {
+    console.log("Getting Strava token for UID:", uid);
     const userRef = db.collection("users").doc(uid);
     const docSnap = await userRef.get();
-    if (!docSnap.exists || !docSnap.data()?.strava) {
+    if (!docSnap.exists) {
+      console.log("User document not found for UID:", uid);
+      return null;
+    }
+    const data = docSnap.data();
+    if (!data?.strava) {
+      console.log("Strava tokens not found in user document for UID:", uid);
       return null;
     }
 
-    let { accessToken, refreshToken, expiresAt } = docSnap.data()?.strava;
+    let { accessToken, refreshToken, expiresAt } = data.strava;
 
     // Check if expired (with 5 min buffer)
     if (Date.now() / 1000 > expiresAt - 300) {
@@ -118,10 +125,12 @@ async function startServer() {
     if (!token) return res.status(401).json({ error: "Strava not connected or token invalid" });
 
     try {
+      console.log("Fetching Strava activities for UID:", uid);
       const response = await axios.get("https://www.strava.com/api/v3/athlete/activities", {
         headers: { Authorization: `Bearer ${token}` },
-        params: { per_page: 10 },
+        params: { per_page: 30 }, // Fetch more activities
       });
+      console.log(`Fetched ${response.data.length} activities for UID:`, uid);
       res.json(response.data);
     } catch (error: any) {
       console.error("Failed to fetch Strava activities:", error.response?.data || error.message);
@@ -170,6 +179,8 @@ async function startServer() {
         // Store in Firestore for existing user
         const userRef = db.collection("users").doc(uid as string);
         await userRef.set({
+          stravaConnected: true,
+          stravaId: athlete.id,
           strava: {
             accessToken: access_token,
             refreshToken: refresh_token,
