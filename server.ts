@@ -19,6 +19,14 @@ async function startServer() {
   app.use(express.json());
   app.use(cookieParser());
 
+  // Helper : reconstruit le redirectUri de façon cohérente entre /url et /callback
+  // Utilise STRAVA_DOMAIN en priorité (à définir dans Railway = "www.sub12.fr")
+  function buildRedirectUri(req: express.Request): string {
+    const host = process.env.STRAVA_DOMAIN || req.get("x-forwarded-host") || req.get("host");
+    const protocol = (req.get("x-forwarded-proto") || "https").split(",")[0].trim();
+    return `${protocol}://${host}/auth/strava/callback`;
+  }
+
   // API Routes
   app.get("/api/auth/strava/url", (req, res) => {
     const { uid, login } = req.query;
@@ -37,10 +45,7 @@ async function startServer() {
       return res.status(400).json({ error: "Missing uid or login flag" });
     }
 
-    // Use the host from the request, ensuring it's the external one
-    const host = process.env.STRAVA_DOMAIN || req.get("x-forwarded-host") || req.get("host");
-    const protocol = (req.get("x-forwarded-proto") || "https").split(',')[0].trim();
-    const redirectUri = `${protocol}://${host}/auth/strava/callback`;
+    const redirectUri = buildRedirectUri(req);
     
     console.log("Génération de l'URL OAuth Strava avec Client ID:", clientId);
     console.log("Redirect URI:", redirectUri);
@@ -136,12 +141,18 @@ async function startServer() {
 
     const isLogin = uid === "login";
 
+    // FIX : redirect_uri doit être identique à celui utilisé lors de l'autorisation.
+    // Sans cette ligne, Strava répond "invalid_grant" → "Failed to exchange token".
+    const redirectUri = buildRedirectUri(req);
+    console.log("Callback redirect_uri used for token exchange:", redirectUri);
+
     try {
       const response = await axios.post("https://www.strava.com/oauth/token", {
         client_id: process.env.STRAVA_CLIENT_ID,
         client_secret: process.env.STRAVA_CLIENT_SECRET,
         code,
         grant_type: "authorization_code",
+        redirect_uri: redirectUri,  // ← FIX : manquait dans la version précédente
       });
 
       const { access_token, refresh_token, expires_at, athlete } = response.data;
