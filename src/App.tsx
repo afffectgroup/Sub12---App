@@ -6,6 +6,9 @@ import {
   MessageSquare, 
   User, 
   ChevronRight, 
+  ArrowRight,
+  Twitter,
+  Instagram,
   CheckCircle2, 
   Circle, 
   Timer, 
@@ -158,6 +161,215 @@ const SportIcon = ({ sport, className, size = 20 }: { sport: Sport; className?: 
   }
 };
 
+
+
+
+
+
+const RaceLogo = ({ name, className = "w-10 h-10" }: { name: string, className?: string }) => {
+  const lowerName = name.toLowerCase();
+  let src = `https://picsum.photos/seed/${encodeURIComponent(name)}/100/100`;
+  
+  if (lowerName.includes('paris')) {
+    src = "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=100&h=100&fit=crop"; // Eiffel Tower
+  } else if (lowerName.includes('ironman') || lowerName.includes('iron man')) {
+    src = "https://images.unsplash.com/photo-1530549387634-e797ca999656?w=100&h=100&fit=crop"; // Triathlon
+  } else if (lowerName.includes('hambourg') || lowerName.includes('hamburg')) {
+    src = "https://images.unsplash.com/photo-1555992336-03a23c7b20ee?w=100&h=100&fit=crop"; // Hamburg
+  } else if (lowerName.includes('marathon')) {
+    src = "https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?w=100&h=100&fit=crop"; // Running
+  } else if (lowerName.includes('trail')) {
+    src = "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=100&h=100&fit=crop"; // Mountains
+  } else if (lowerName.includes('hyrox')) {
+    src = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop"; // Fitness
+  } else if (lowerName.includes('nice')) {
+    src = "https://images.unsplash.com/photo-1533619039164-4c63f042062b?w=100&h=100&fit=crop"; // Nice
+  } else if (lowerName.includes('londres') || lowerName.includes('london')) {
+    src = "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=100&h=100&fit=crop"; // London
+  } else if (lowerName.includes('new york') || lowerName.includes('nyc')) {
+    src = "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=100&h=100&fit=crop"; // NYC
+  }
+
+  return (
+    <div className={cn("rounded-xl overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 shadow-sm", className)}>
+      <img src={src} alt={name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+    </div>
+  );
+};
+
+const Logo = ({ className = "w-10 h-10", iconOnly = false }: { className?: string, iconOnly?: boolean }) => (
+  <div className={cn("flex items-center gap-3", className)}>
+    <div className="relative w-full h-full flex items-center justify-center">
+      <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#fb923c" />
+            <stop offset="100%" stopColor="#ea580c" />
+          </linearGradient>
+          <filter id="speed-blur" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="1" />
+          </filter>
+        </defs>
+        {/* Speed lines */}
+        <path d="M5 35 L25 35 M0 50 L20 50 M5 65 L25 65" stroke="url(#logo-gradient)" strokeWidth="4" strokeLinecap="round" opacity="0.6" filter="url(#speed-blur)" />
+        {/* Stylized Speedy S */}
+        <path 
+          d="M85 20 L40 20 C25 20 20 35 35 45 L65 55 C80 65 75 80 60 80 L15 80" 
+          stroke="url(#logo-gradient)" 
+          strokeWidth="14" 
+          strokeLinecap="round" 
+          strokeLinejoin="round"
+          className="drop-shadow-lg"
+        />
+        <path 
+          d="M85 20 L40 20 C25 20 20 35 35 45 L65 55 C80 65 75 80 60 80 L15 80" 
+          stroke="white" 
+          strokeWidth="2" 
+          strokeLinecap="round" 
+          strokeLinejoin="round"
+          opacity="0.3"
+        />
+      </svg>
+    </div>
+    {!iconOnly && <span className="text-3xl font-black italic tracking-tighter text-slate-900 uppercase">Sub12</span>}
+  </div>
+);
+
+const LandingPage = ({ onLogin, onLoginStrava }: { onLogin: () => void, onLoginStrava: () => void }) => {
+  return (
+    <div className="min-h-screen bg-white selection:bg-orange-100">
+      {/* Navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+          <Logo className="w-12 h-12" />
+          <button 
+            onClick={onLogin}
+            className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-800 transition-all shadow-lg active:scale-95"
+          >
+            Se connecter
+          </button>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="pt-40 pb-20 px-6">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="space-y-8"
+          >
+            <div className="inline-flex items-center gap-2 bg-orange-50 text-orange-600 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest border border-orange-100">
+              <Zap size={14} /> L'IA au service de ta performance
+            </div>
+            <h1 className="text-6xl lg:text-7xl font-black text-slate-900 leading-[1.1] tracking-tight italic">
+              Entraîne-toi <br />
+              <span className="text-orange-600">sans compromis.</span>
+            </h1>
+            <p className="text-xl text-slate-500 max-w-lg leading-relaxed">
+              Sub12 est le coach IA qui adapte ton plan d'entraînement à ton agenda d'entrepreneur. Synchronise Strava, définis tes objectifs, et laisse l'IA faire le reste.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <button 
+                onClick={onLogin}
+                className="bg-orange-600 text-white px-10 py-5 rounded-2xl font-black text-lg hover:bg-orange-700 transition-all shadow-2xl shadow-orange-500/20 active:scale-95 flex items-center justify-center gap-3"
+              >
+                Commencer maintenant <ArrowRight size={20} />
+              </button>
+              <button 
+                onClick={onLoginStrava}
+                className="bg-[#FC4C02] text-white px-10 py-5 rounded-2xl font-black text-lg hover:bg-[#E34402] transition-all shadow-2xl shadow-orange-500/10 active:scale-95 flex items-center justify-center gap-3"
+              >
+                <Activity size={20} /> Login with Strava
+              </button>
+            </div>
+            <div className="flex items-center gap-6 pt-8">
+              <div className="flex -space-x-3">
+                {[1,2,3,4].map(i => (
+                  <img key={i} src={`https://i.pravatar.cc/100?u=${i}`} className="w-10 h-10 rounded-full border-2 border-white shadow-sm" referrerPolicy="no-referrer" />
+                ))}
+              </div>
+              <p className="text-sm text-slate-400 font-medium">
+                Rejoint par <span className="text-slate-900 font-bold">+500 athlètes</span> cette semaine
+              </p>
+            </div>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.2 }}
+            className="relative"
+          >
+            <div className="absolute -inset-4 bg-orange-500/10 blur-3xl rounded-full" />
+            <div className="relative bg-slate-900 rounded-[2.5rem] p-4 shadow-2xl border border-slate-800 overflow-hidden group">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-orange-600" />
+              <img 
+                src="https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?auto=format&fit=crop&q=80&w=1000" 
+                className="rounded-[2rem] w-full h-auto object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
+              <div className="absolute bottom-10 left-10 right-10">
+                <div className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-2xl">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <Activity size={24} />
+                    </div>
+                    <div>
+                      <p className="text-white font-bold">Séance du jour</p>
+                      <p className="text-white/60 text-xs">Intervalle Seuil • 45min</p>
+                    </div>
+                  </div>
+                  <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                    <div className="w-[75%] h-full bg-orange-500" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="py-24 bg-slate-50">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto mb-20 space-y-4">
+            <h2 className="text-4xl font-black text-slate-900 tracking-tight italic">Pourquoi Sub12 ?</h2>
+            <p className="text-slate-500">L'outil ultime pour ceux qui n'ont pas le temps de gérer leur plan, mais qui veulent des résultats.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              { icon: <Zap className="text-orange-600" />, title: "IA Adaptative", desc: "Ton plan se recalcule si tu rates une séance ou si ton agenda change." },
+              { icon: <Activity className="text-orange-600" />, title: "Sync Strava", desc: "Tes séances réelles sont comparées à ton plan pour mesurer ta progression." },
+              { icon: <MessageSquare className="text-orange-600" />, title: "Coach 24/7", desc: "Pose tes questions à ton coach IA, il connaît tes données par cœur." }
+            ].map((f, i) => (
+              <div key={i} className="bg-white p-10 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl transition-all group">
+                <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-orange-50 transition-colors">
+                  {f.icon}
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-4 tracking-tight">{f.title}</h3>
+                <p className="text-slate-500 leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-12 border-t border-slate-100">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+          <Logo className="w-10 h-10" />
+          <p className="text-slate-400 text-sm font-medium">© 2026 Sub12. Tous droits réservés.</p>
+          <div className="flex items-center gap-6">
+            <a href="#" className="text-slate-400 hover:text-slate-900 transition-colors"><Twitter size={20} /></a>
+            <a href="#" className="text-slate-400 hover:text-slate-900 transition-colors"><Instagram size={20} /></a>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+};
 
 // --- Main App ---
 
@@ -879,39 +1091,7 @@ export default function App() {
   }
 
   if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white p-10 rounded-3xl shadow-2xl max-w-md w-full border border-slate-100 text-center"
-        >
-          <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-orange-500 mb-8 mx-auto shadow-lg">
-            <Activity size={36} strokeWidth={2.5} />
-          </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-3 tracking-tight italic">Sub12</h1>
-          <p className="text-slate-500 mb-10 text-sm leading-relaxed">
-            Le coach IA qui adapte ton entraînement à ta vie d'entrepreneur.
-          </p>
-          <div className="space-y-3">
-            <button 
-              onClick={handleLogin}
-              className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-base hover:bg-slate-800 transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95"
-            >
-              <LogIn size={20} />
-              Se connecter avec Google
-            </button>
-            <button 
-              onClick={handleLoginStrava}
-              className="w-full bg-[#FC4C02] text-white py-4 rounded-2xl font-bold text-base hover:bg-[#E34402] transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95"
-            >
-              <Activity size={20} />
-              Se connecter avec Strava
-            </button>
-          </div>
-        </motion.div>
-      </div>
-    );
+    return <LandingPage onLogin={handleLogin} onLoginStrava={handleLoginStrava} />;
   }
 
   if (!profile.onboarded) {
@@ -1125,15 +1305,7 @@ export default function App() {
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 py-3 px-4">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-orange-500 shadow-lg shadow-orange-500/10">
-              <Activity size={24} strokeWidth={2.5} />
-            </div>
-            <div>
-              <h1 className="font-black text-lg leading-none tracking-tight text-slate-900">Sub12</h1>
-              <p className="mono-label text-[10px] text-slate-400 mt-0.5 uppercase tracking-widest">Performance Engine</p>
-            </div>
-          </div>
+          <Logo className="w-10 h-10" />
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block border-r border-slate-100 pr-4">
               <p className="mono-label text-[10px] text-orange-600 font-bold uppercase tracking-wider">{profile.targetRace}</p>
@@ -1169,8 +1341,8 @@ export default function App() {
                   <MessageSquare size={80} className="text-orange-500" />
                 </div>
                 <div className="flex gap-5 items-start relative z-10">
-                  <div className="w-14 h-14 rounded-2xl bg-orange-500 flex-shrink-0 flex items-center justify-center shadow-lg shadow-orange-500/20">
-                    <Activity size={28} className="text-white" />
+                  <div className="w-14 h-14 bg-orange-500 rounded-2xl flex-shrink-0 flex items-center justify-center shadow-lg shadow-orange-500/20">
+                    <Logo iconOnly className="w-10 h-10" />
                   </div>
                   <div className="space-y-2 flex-1">
                     <div className="flex justify-between items-center">
@@ -1450,9 +1622,7 @@ export default function App() {
                   {/* Main Objective */}
                   <div className="flex items-center justify-between p-3 bg-orange-50 rounded-xl border border-orange-100">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-orange-600 shadow-sm border border-orange-100">
-                        <Zap size={16} />
-                      </div>
+                      <RaceLogo name={profile.targetRace} className="w-12 h-12" />
                       <div>
                         <p className="text-xs font-bold text-slate-900">{profile.targetRace}</p>
                         <p className="text-[10px] text-slate-400 font-medium">Objectif Principal • {profile.raceDate ? format(parseISO(profile.raceDate), 'd MMM yyyy', { locale: fr }) : 'Date non définie'}</p>
@@ -1470,9 +1640,7 @@ export default function App() {
                   {(profile.secondaryRaces || []).map((race, idx) => (
                     <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-orange-600 shadow-sm border border-slate-100">
-                          {race.type === 'volume' ? <Activity size={16} /> : race.type === 'race' ? <Trophy size={16} /> : <Target size={16} />}
-                        </div>
+                        <RaceLogo name={race.name} className="w-10 h-10" />
                         <div>
                           <p className="text-xs font-bold text-slate-900">{race.name}</p>
                           <p className="text-[10px] text-slate-400 font-medium">
