@@ -152,7 +152,7 @@ async function startServer() {
         client_secret: process.env.STRAVA_CLIENT_SECRET,
         code,
         grant_type: "authorization_code",
-        redirect_uri: redirectUri,  // ← FIX : manquait dans la version précédente
+        redirect_uri: redirectUri,
       });
 
       const { access_token, refresh_token, expires_at, athlete } = response.data;

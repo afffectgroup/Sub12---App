@@ -9,6 +9,7 @@ export interface Workout {
   durationMinutes: number;
   intensity: 'Low' | 'Moderate' | 'High' | 'Intervals';
   completed: boolean;
+  tss?: number;
 }
 
 export interface SecondaryRace {

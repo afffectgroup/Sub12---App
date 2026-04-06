@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type, FunctionDeclaration, Modality } from "@google/genai";
 import { AthleteProfile, Workout, ChatMessage } from "../types";
+import { differenceInDays, parseISO } from "date-fns";
 
 const apiKey = process.env.GEMINI_API_KEY as string;
 if (!apiKey || apiKey === "undefined") {
@@ -37,6 +38,34 @@ const updateWorkoutsTool: FunctionDeclaration = {
     required: ["newWorkouts"]
   }
 };
+
+export async function generateDailyCoachInsight(profile: AthleteProfile, lastActivity: any, todayWorkout: Workout | undefined): Promise<string> {
+  const prompt = `
+    Tu es "Coach Sub12". Génère un message court (max 2-3 phrases) et percutant pour l'athlète ${profile.name}.
+    Données:
+    - Objectif: ${profile.targetRace} dans ${differenceInDays(parseISO(profile.raceDate), new Date())} jours.
+    - Dernière activité Strava: ${lastActivity ? `${lastActivity.name}, ${Math.round(lastActivity.distance / 1000)}km, ${lastActivity.total_elevation_gain}m D+` : "Aucune activité récente"}.
+    - Séance prévue aujourd'hui: ${todayWorkout ? `${todayWorkout.title} (${todayWorkout.sport}, ${todayWorkout.durationMinutes}min)` : "Repos"}.
+    
+    Ton message doit:
+    1. Commenter brièvement la dernière activité (si présente).
+    2. Donner un conseil ou un encouragement pour la séance du jour.
+    3. Rester dans ton ADN: expert, direct, motivant, orienté efficience "Sub12".
+    
+    Ne commence pas par "Bonjour" ou "Salut", va droit au but.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+    });
+    return response.text || "Continue sur ta lancée, chaque séance te rapproche du Sub12.";
+  } catch (error) {
+    console.error("Error generating daily insight:", error);
+    return "Focus sur la séance du jour. La régularité est la clé du Sub12.";
+  }
+}
 
 export async function generateTrainingPlan(profile: AthleteProfile, chatHistory: ChatMessage[] = []): Promise<Workout[]> {
   const historyContext = chatHistory.length > 0 

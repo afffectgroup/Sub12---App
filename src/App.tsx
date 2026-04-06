@@ -50,7 +50,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { AthleteProfile, Workout, ChatMessage, Sport, SecondaryRace } from './types';
-import { generateTrainingPlan, getCoachAdvice, generateSpeech } from './services/gemini';
+import { generateTrainingPlan, getCoachAdvice, generateSpeech, generateDailyCoachInsight } from './services/gemini';
 import { 
   auth, 
   db, 
@@ -61,6 +61,7 @@ import {
   onAuthStateChanged, 
   setDoc, 
   getDoc, 
+  deleteDoc,
   onSnapshot, 
   collection, 
   query, 
@@ -194,9 +195,13 @@ export default function App() {
   const [planView, setPlanView] = useState<'list' | 'calendar'>('list');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
+  const [editingProfile, setEditingProfile] = useState<AthleteProfile | null>(null);
 
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [stravaActivities, setStravaActivities] = useState<any[]>([]);
+  const [coachInsight, setCoachInsight] = useState<string>("");
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -299,6 +304,110 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
+  // --- Strava Calculations ---
+  const calculateMetrics = (activities: any[]) => {
+    if (!activities || activities.length === 0) return { ctl: 0, atl: 0, tsb: 0 };
+
+    // Simple TSS estimation: (duration in min) * intensity
+    // Run: 1.0, Bike: 0.8, Swim: 1.2, Strength: 0.5
+    const getTss = (activity: any) => {
+      const durationMin = activity.moving_time / 60;
+      let multiplier = 0.8; // default bike
+      if (activity.type === 'Run') multiplier = 1.0;
+      if (activity.type === 'Swim') multiplier = 1.2;
+      if (activity.type === 'WeightTraining') multiplier = 0.5;
+      
+      // Adjust by relative effort if available
+      const effort = activity.suffer_score || 50;
+      const intensityFactor = effort / 50; // 50 is "moderate"
+      
+      return durationMin * multiplier * intensityFactor;
+    };
+
+    const now = new Date();
+    const dayTss: Record<string, number> = {};
+    
+    // Aggregate TSS by day for the last 90 days
+    activities.forEach(activity => {
+      const dateStr = format(parseISO(activity.start_date), 'yyyy-MM-dd');
+      const tss = getTss(activity);
+      dayTss[dateStr] = (dayTss[dateStr] || 0) + tss;
+    });
+
+    // CTL: 42-day rolling average
+    // ATL: 7-day rolling average
+    let ctl = 0;
+    let atl = 0;
+    
+    for (let i = 0; i < 42; i++) {
+      const d = format(addDays(now, -i), 'yyyy-MM-dd');
+      ctl += (dayTss[d] || 0);
+    }
+    ctl = Math.round(ctl / 42);
+
+    for (let i = 0; i < 7; i++) {
+      const d = format(addDays(now, -i), 'yyyy-MM-dd');
+      atl += (dayTss[d] || 0);
+    }
+    atl = Math.round(atl / 7);
+
+    const tsb = ctl - atl;
+    return { ctl, atl, tsb };
+  };
+
+  const metrics = calculateMetrics(stravaActivities);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // Strava Activities Sync
+  useEffect(() => {
+    if (!user || !profile.stravaConnected) return;
+
+    const fetchStravaActivities = async () => {
+      try {
+        const response = await fetch(`/api/strava/activities?uid=${user.uid}`);
+        if (response.ok) {
+          const data = await response.json();
+          setStravaActivities(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch Strava activities:", error);
+      }
+    };
+
+    fetchStravaActivities();
+  }, [user, profile.stravaConnected]);
+
+  // Coach Daily Insight Generation
+  useEffect(() => {
+    if (!user || !profile.onboarded || coachInsight) return;
+
+    const generateInsight = async () => {
+      const todayWorkout = workouts.find(w => isSameDay(parseISO(w.date), new Date()));
+      const lastActivity = stravaActivities[0];
+      
+      // Check if we already have a cached insight for today in Firestore
+      const insightRef = doc(db, 'users', user.uid, 'insights', format(new Date(), 'yyyy-MM-dd'));
+      const insightSnap = await getDoc(insightRef);
+      
+      if (insightSnap.exists()) {
+        setCoachInsight(insightSnap.data().text);
+      } else {
+        const text = await generateDailyCoachInsight(profile, lastActivity, todayWorkout);
+        setCoachInsight(text);
+        // Cache it
+        await setDoc(insightRef, { text, timestamp: Date.now() });
+      }
+    };
+
+    if (stravaActivities.length > 0 || !profile.stravaConnected) {
+      generateInsight();
+    }
+  }, [user, profile.onboarded, stravaActivities, workouts]);
+
   // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -314,11 +423,13 @@ export default function App() {
     const profileRef = doc(db, 'users', user.uid);
     const unsubscribe = onSnapshot(profileRef, (docSnap) => {
       if (docSnap.exists()) {
-        setProfile(docSnap.data() as AthleteProfile);
+        const data = docSnap.data() as AthleteProfile;
+        setProfile(data);
+        if (!editingProfile) setEditingProfile(data);
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, `users/${user.uid}`));
     return () => unsubscribe();
-  }, [user]);
+  }, [user, editingProfile]);
 
   // Workouts Sync
   useEffect(() => {
@@ -473,14 +584,20 @@ export default function App() {
     }
   };
 
-  const saveProfile = async (newProfile: AthleteProfile) => {
-    if (!user) return;
+  const saveProfile = (newProfile: AthleteProfile) => {
+    setEditingProfile(newProfile);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user || !editingProfile) return;
     const path = `users/${user.uid}`;
     try {
-      await setDoc(doc(db, path), { ...newProfile, uid: user.uid, updatedAt: Date.now() });
-      setProfile(newProfile);
+      await setDoc(doc(db, path), { ...editingProfile, uid: user.uid, updatedAt: Date.now() });
+      setProfile(editingProfile);
+      showToast("Profil mis à jour avec succès !");
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
+      showToast("Erreur lors de la sauvegarde", "error");
     }
   };
 
@@ -522,8 +639,52 @@ export default function App() {
     const path = `users/${user.uid}/workouts/${id}`;
     try {
       await setDoc(doc(db, path), { completed: !workout.completed }, { merge: true });
+      showToast(workout.completed ? "Séance marquée comme non terminée" : "Séance terminée !");
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  };
+
+  const handleAddWorkout = (date?: Date) => {
+    const newWorkout: Workout = {
+      id: Math.random().toString(36).substr(2, 9),
+      title: 'Nouvelle séance',
+      sport: 'Run',
+      durationMinutes: 60,
+      intensity: 'Moderate',
+      completed: false,
+      date: format(date || selectedDate, 'yyyy-MM-dd'),
+      description: '',
+      tss: 0
+    };
+    setEditingWorkout(newWorkout);
+  };
+
+  const deleteWorkout = async (id: string) => {
+    if (!user) return;
+    const path = `users/${user.uid}/workouts/${id}`;
+    try {
+      await deleteDoc(doc(db, path));
+      setEditingWorkout(null);
+      showToast("Séance supprimée");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  };
+
+  const saveWorkout = async (workout: Workout) => {
+    if (!user) return;
+    const path = `users/${user.uid}/workouts/${workout.id}`;
+    try {
+      await setDoc(doc(db, path), { 
+        ...workout, 
+        uid: user.uid,
+        updatedAt: Date.now() 
+      });
+      setEditingWorkout(null);
+      showToast("Séance enregistrée");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
     }
   };
 
@@ -879,25 +1040,28 @@ export default function App() {
               className="space-y-4"
             >
               {/* Coach Quick Insight */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm overflow-hidden relative group">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <MessageSquare size={48} className="text-orange-600" />
+              <div className="bg-slate-900 p-6 rounded-2xl shadow-xl overflow-hidden relative group border border-slate-800">
+                <div className="absolute top-0 right-0 p-3 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <MessageSquare size={80} className="text-orange-500" />
                 </div>
-                <div className="flex gap-4 items-start relative z-10">
-                  <div className="w-12 h-12 rounded-full bg-orange-100 flex-shrink-0 flex items-center justify-center border-2 border-white shadow-sm">
-                    <Activity size={24} className="text-orange-600" />
+                <div className="flex gap-5 items-start relative z-10">
+                  <div className="w-14 h-14 rounded-2xl bg-orange-500 flex-shrink-0 flex items-center justify-center shadow-lg shadow-orange-500/20">
+                    <Activity size={28} className="text-white" />
                   </div>
-                  <div className="space-y-1">
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">Coach Sub12 Insight</h4>
-                    <p className="text-sm font-medium leading-relaxed text-slate-700">
-                      {daysToRace < 70 && profile.weeklyHoursGoal < 10 ? (
-                        <>
-                          <span className="font-bold text-slate-900">Alerte Volume :</span> {daysToRace} jours avant ton Ironman, 8.5h/semaine est un défi pour le Sub12. On va devoir optimiser chaque minute de tes séances de seuil. Prêt à monter en intensité ?
-                        </>
-                      ) : (
-                        `Salut ${profile.name}, ta charge est en hausse de 12%. C'est parfait pour cette phase de préparation. N'oublie pas de bien t'hydrater aujourd'hui.`
-                      )}
+                  <div className="space-y-2 flex-1">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-500">Coach Sub12 Insight</h4>
+                      <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">Live Analysis</span>
+                    </div>
+                    <p className="text-sm font-medium leading-relaxed text-slate-200 italic">
+                      {coachInsight || "Analyse de tes données en cours..."}
                     </p>
+                    <button 
+                      onClick={() => setActiveTab('coach')}
+                      className="text-[10px] font-black uppercase tracking-widest text-orange-500 flex items-center gap-1 hover:text-orange-400 transition-colors pt-2"
+                    >
+                      Discuter avec le coach <ChevronRight size={12} />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -905,60 +1069,77 @@ export default function App() {
               {/* Today's Workout - More Prominent */}
               {(() => {
                 const todayWorkout = workouts.find(w => isSameDay(parseISO(w.date), new Date()));
-                if (!todayWorkout) return null;
+                if (!todayWorkout) return (
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
+                    <p className="mono-label text-slate-400 text-xs mb-2">Aujourd'hui</p>
+                    <h3 className="text-lg font-bold text-slate-900">Jour de repos</h3>
+                    <p className="text-slate-500 text-xs mt-1">La récupération est une séance à part entière.</p>
+                  </div>
+                );
                 
                 return (
-                  <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-orange-600/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-orange-600/20 transition-all duration-700" />
+                  <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group">
                     <div className="relative z-10">
                       <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
-                          <p className="mono-label text-orange-500 text-[10px] font-black uppercase tracking-widest">Séance du jour</p>
+                          <div className={cn("w-2 h-2 rounded-full animate-pulse", todayWorkout.completed ? "bg-green-500" : "bg-orange-500")} />
+                          <p className="mono-label text-slate-400 text-[10px] font-black uppercase tracking-widest">Séance du jour</p>
                         </div>
-                        <span className="text-[10px] font-mono text-slate-400 bg-slate-800/50 px-2 py-1 rounded-md">
+                        <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
                           {format(new Date(), 'EEEE d MMMM', { locale: fr })}
                         </span>
                       </div>
                       
                       <div className="flex justify-between items-start gap-4">
                         <div className="flex-1">
-                          <h3 className="text-2xl font-black mb-2 tracking-tight leading-tight">{todayWorkout.title}</h3>
-                          <p className="text-slate-400 text-xs line-clamp-2 mb-4 font-medium leading-relaxed">
+                          <h3 className="text-2xl font-black mb-2 tracking-tight leading-tight text-slate-900">{todayWorkout.title}</h3>
+                          <p className="text-slate-500 text-xs line-clamp-2 mb-4 font-medium leading-relaxed">
                             {todayWorkout.description}
                           </p>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="flex items-center gap-1.5 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl text-[10px] font-bold">
+                            <span className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl text-[10px] font-bold text-slate-600">
                               <Timer size={12} className="text-orange-500" /> {todayWorkout.durationMinutes}m
                             </span>
-                            <span className="flex items-center gap-1.5 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl text-[10px] font-bold">
-                              {todayWorkout.sport === 'Bike' && <Bike size={12} className="text-orange-500" />}
-                              {todayWorkout.sport === 'Run' && <Footprints size={12} className="text-orange-500" />}
-                              {todayWorkout.sport === 'Swim' && <Waves size={12} className="text-orange-500" />}
-                              {todayWorkout.sport === 'Strength' && <Dumbbell size={12} className="text-orange-500" />}
-                              {todayWorkout.sport === 'Rest' && <Activity size={12} className="text-orange-500" />}
+                            <span className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl text-[10px] font-bold text-slate-600">
+                              <SportIcon sport={todayWorkout.sport} size={12} className="text-orange-500" />
                               {todayWorkout.sport}
                             </span>
-                            <span className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 rounded-xl text-[10px] font-black text-orange-500 font-mono">
-                              <Zap size={12} /> {todayWorkout.intensity}
-                            </span>
+                            <IntensityBadge intensity={todayWorkout.intensity} />
                           </div>
                         </div>
-                        <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 shadow-inner">
-                          {todayWorkout.sport === 'Bike' && <Bike size={32} className="text-orange-500" />}
-                          {todayWorkout.sport === 'Run' && <Footprints size={32} className="text-orange-500" />}
-                          {todayWorkout.sport === 'Swim' && <Waves size={32} className="text-orange-500" />}
-                          {todayWorkout.sport === 'Strength' && <Dumbbell size={32} className="text-orange-500" />}
-                          {todayWorkout.sport === 'Rest' && <Activity size={32} className="text-orange-500" />}
+                        <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 shadow-inner">
+                          <SportIcon sport={todayWorkout.sport} size={32} className="text-orange-500" />
                         </div>
                       </div>
                       
-                      <button 
-                        onClick={() => setActiveTab('plan')}
-                        className="mt-6 w-full bg-white text-slate-900 py-3 rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-orange-500 hover:text-white transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-black/20"
-                      >
-                        Voir les détails <ChevronRight size={14} />
-                      </button>
+                      <div className="grid grid-cols-2 gap-3 mt-6">
+                        <button 
+                          onClick={() => setActiveTab('plan')}
+                          className="bg-slate-50 text-slate-600 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-all duration-300 flex items-center justify-center gap-2 border border-slate-200"
+                        >
+                          Détails
+                        </button>
+                        <button 
+                          onClick={async () => {
+                            if (!user) return;
+                            const path = `users/${user.uid}/workouts/${todayWorkout.id}`;
+                            try {
+                              await setDoc(doc(db, path), { completed: !todayWorkout.completed }, { merge: true });
+                              showToast(todayWorkout.completed ? "Séance marquée non terminée" : "Félicitations ! Séance terminée.");
+                            } catch (error) {
+                              handleFirestoreError(error, OperationType.UPDATE, path);
+                            }
+                          }}
+                          className={cn(
+                            "py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/10",
+                            todayWorkout.completed 
+                              ? "bg-green-500 text-white hover:bg-green-600" 
+                              : "bg-orange-600 text-white hover:bg-orange-700"
+                          )}
+                        >
+                          {todayWorkout.completed ? <><CheckCircle2 size={14} /> Terminée</> : "Marquer terminée"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -969,9 +1150,9 @@ export default function App() {
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                   <div className="flex items-center gap-2 text-slate-500 mb-2">
                     <Flame size={14} className="text-orange-500" />
-                    <span className="mono-label">Charge</span>
+                    <span className="mono-label">Charge (CTL)</span>
                   </div>
-                  <p className="text-2xl font-bold font-mono">742</p>
+                  <p className="text-2xl font-bold font-mono">{metrics.ctl}</p>
                   <p className="text-[10px] text-green-600 font-bold flex items-center gap-0.5">
                     <TrendingUp size={10} /> +12%
                   </p>
@@ -979,22 +1160,22 @@ export default function App() {
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                   <div className="flex items-center gap-2 text-slate-500 mb-2">
                     <Timer size={14} className="text-orange-500" />
-                    <span className="mono-label">Volume</span>
+                    <span className="mono-label">Fatigue (ATL)</span>
                   </div>
-                  <p className="text-2xl font-bold font-mono">8.5h</p>
-                  <p className="text-[10px] text-slate-400 font-bold">Goal: {profile.weeklyHoursGoal}h</p>
+                  <p className="text-2xl font-bold font-mono">{metrics.atl}</p>
+                  <p className="text-[10px] text-slate-400 font-bold">Volume: 8.5h</p>
                 </div>
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
-                  <div className="relative w-12 h-12 mb-1">
-                    <svg className="w-full h-full transform -rotate-90">
-                      <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-100" />
-                      <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray={125.6} strokeDashoffset={125.6 * (1 - profile.progressionScore / 100)} className="text-orange-600" />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold font-mono">
-                      {profile.progressionScore}%
-                    </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex items-center gap-2 text-slate-500 mb-2">
+                    <Zap size={14} className="text-orange-500" />
+                    <span className="mono-label">Forme (TSB)</span>
                   </div>
-                  <span className="mono-label text-slate-400">Progression</span>
+                  <p className={cn("text-2xl font-bold font-mono", metrics.tsb < -10 ? "text-red-500" : metrics.tsb > 5 ? "text-green-500" : "text-orange-500")}>
+                    {metrics.tsb}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
+                    {metrics.tsb < -10 ? "Fatigué" : metrics.tsb > 5 ? "Frais" : "Optimal"}
+                  </p>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                   <div className="flex items-center gap-2 text-slate-500 mb-2">
@@ -1002,43 +1183,144 @@ export default function App() {
                     <span className="mono-label">Countdown</span>
                   </div>
                   <p className="text-2xl font-bold font-mono">{daysToRace}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase">Jours</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Jours restants</p>
                 </div>
               </div>
 
-              {/* Chart */}
-              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                <h3 className="font-bold text-sm mb-4 flex items-center gap-2">
-                  <TrendingUp size={16} className="text-orange-600" />
-                  <span className="mono-label">Charge Hebdomadaire (TSS)</span>
-                </h3>
-                <div className="h-48 w-full min-h-[192px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={[
-                      { day: 'Lun', tss: 80 },
-                      { day: 'Mar', tss: 120 },
-                      { day: 'Mer', tss: 45 },
-                      { day: 'Jeu', tss: 150 },
-                      { day: 'Ven', tss: 0 },
-                      { day: 'Sam', tss: 220 },
-                      { day: 'Dim', tss: 180 },
-                    ]}>
-                      <defs>
-                        <linearGradient id="colorTss" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ea580c" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="#ea580c" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 600, fill: '#94a3b8', fontFamily: 'JetBrains Mono'}} />
-                      <YAxis hide />
-                      <Tooltip 
-                        contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontFamily: 'JetBrains Mono', fontSize: '10px' }}
-                        labelStyle={{ fontWeight: 800, color: '#ea580c' }}
-                      />
-                      <Area type="monotone" dataKey="tss" stroke="#ea580c" strokeWidth={2} fillOpacity={1} fill="url(#colorTss)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+              {/* Strava Stats Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-1">
+                  <h3 className="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
+                    <Activity size={14} className="text-orange-500" />
+                    Strava Performance
+                  </h3>
+                  {profile.stravaConnected && (
+                    <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">Live Sync</span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Last Activity */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm md:col-span-2">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <p className="mono-label text-slate-400 text-[9px] uppercase tracking-widest mb-1">Dernière activité</p>
+                        <h4 className="font-bold text-slate-900">
+                          {stravaActivities[0]?.name || "Aucune activité"}
+                        </h4>
+                      </div>
+                      <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
+                        {stravaActivities[0]?.type === 'Run' && <Footprints size={20} className="text-orange-500" />}
+                        {stravaActivities[0]?.type === 'Ride' && <Bike size={20} className="text-orange-500" />}
+                        {stravaActivities[0]?.type === 'Swim' && <Waves size={20} className="text-orange-500" />}
+                      </div>
+                    </div>
+                    {stravaActivities[0] && (
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-[9px] mono-label text-slate-400 uppercase">Distance</p>
+                          <p className="text-sm font-black font-mono">{(stravaActivities[0].distance / 1000).toFixed(1)}km</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] mono-label text-slate-400 uppercase">Dénivelé</p>
+                          <p className="text-sm font-black font-mono">{stravaActivities[0].total_elevation_gain}m</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] mono-label text-slate-400 uppercase">Durée</p>
+                          <p className="text-sm font-black font-mono">{Math.floor(stravaActivities[0].moving_time / 60)}min</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Weekly Mileage */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <p className="mono-label text-slate-400 text-[9px] uppercase tracking-widest mb-4">Volume 7j</p>
+                    <div className="space-y-3">
+                      {(() => {
+                        const last7Days = addDays(new Date(), -7);
+                        const weekly = stravaActivities.filter(a => parseISO(a.start_date) > last7Days);
+                        const runKm = weekly.filter(a => a.type === 'Run').reduce((acc, a) => acc + a.distance, 0) / 1000;
+                        const bikeKm = weekly.filter(a => a.type === 'Ride').reduce((acc, a) => acc + a.distance, 0) / 1000;
+                        const swimM = weekly.filter(a => a.type === 'Swim').reduce((acc, a) => acc + a.distance, 0);
+                        
+                        return (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Footprints size={14} className="text-slate-400" />
+                                <span className="text-[10px] font-bold text-slate-600">Run</span>
+                              </div>
+                              <span className="text-[11px] font-black font-mono">{runKm.toFixed(1)}km</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Bike size={14} className="text-slate-400" />
+                                <span className="text-[10px] font-bold text-slate-600">Bike</span>
+                              </div>
+                              <span className="text-[11px] font-black font-mono">{bikeKm.toFixed(1)}km</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Waves size={14} className="text-slate-400" />
+                                <span className="text-[10px] font-bold text-slate-600">Swim</span>
+                              </div>
+                              <span className="text-[11px] font-black font-mono">{swimM.toFixed(0)}m</span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Training Load Graph */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-sm flex items-center gap-2">
+                      <TrendingUp size={16} className="text-orange-600" />
+                      <span className="mono-label">Charge Hebdomadaire (TSS)</span>
+                    </h3>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-orange-500" />
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">Réel</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-slate-200" />
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">Prévu</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="h-48 w-full min-h-[192px] min-w-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={[
+                        { day: 'Lun', tss: 80, planned: 70 },
+                        { day: 'Mar', tss: 120, planned: 100 },
+                        { day: 'Mer', tss: 45, planned: 60 },
+                        { day: 'Jeu', tss: 150, planned: 140 },
+                        { day: 'Ven', tss: 0, planned: 0 },
+                        { day: 'Sam', tss: 220, planned: 200 },
+                        { day: 'Dim', tss: 180, planned: 180 },
+                      ]}>
+                        <defs>
+                          <linearGradient id="colorTss" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ea580c" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#ea580c" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 600, fill: '#94a3b8', fontFamily: 'JetBrains Mono'}} />
+                        <YAxis hide />
+                        <Tooltip 
+                          contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontFamily: 'JetBrains Mono', fontSize: '10px' }}
+                          labelStyle={{ fontWeight: 800, color: '#ea580c' }}
+                        />
+                        <Area type="monotone" dataKey="planned" stroke="#e2e8f0" strokeWidth={2} fill="transparent" strokeDasharray="5 5" />
+                        <Area type="monotone" dataKey="tss" stroke="#ea580c" strokeWidth={3} fillOpacity={1} fill="url(#colorTss)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
 
@@ -1101,14 +1383,23 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-                <button 
-                  onClick={handleGeneratePlan}
-                  disabled={isGeneratingPlan}
-                  className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-800 transition-all disabled:opacity-50"
-                >
-                  {isGeneratingPlan ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                  Générer
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => handleAddWorkout()}
+                    className="bg-orange-600 text-white p-1.5 rounded-lg hover:bg-orange-700 transition-all shadow-sm"
+                    title="Ajouter une séance"
+                  >
+                    <Plus size={16} />
+                  </button>
+                  <button 
+                    onClick={handleGeneratePlan}
+                    disabled={isGeneratingPlan}
+                    className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-800 transition-all disabled:opacity-50"
+                  >
+                    {isGeneratingPlan ? <Loader2 size={14} className="animate-spin" /> : <Activity size={14} />}
+                    Générer
+                  </button>
+                </div>
               </div>
 
               {workouts.length === 0 ? (
@@ -1127,17 +1418,20 @@ export default function App() {
                 </div>
               ) : planView === 'list' ? (
                 <div className="space-y-2">
-                  {workouts.map((workout, idx) => (
-                    <motion.div 
-                      key={workout.id}
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.03 }}
-                      className={cn(
-                        "bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex items-center gap-3 transition-all",
-                        workout.completed && "opacity-60 bg-slate-50"
-                      )}
-                    >
+                      {workouts.map((workout, idx) => (
+                        <motion.div 
+                          key={workout.id}
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.03 }}
+                          className={cn(
+                            "p-3 rounded-lg border shadow-sm flex items-center gap-3 transition-all",
+                            workout.sport === 'Rest' 
+                              ? "bg-slate-50 border-slate-100 border-dashed" 
+                              : "bg-white border-slate-200",
+                            workout.completed && "opacity-60 bg-slate-50"
+                          )}
+                        >
                       <button 
                         onClick={() => toggleWorkout(workout.id)}
                         className={cn(
@@ -1167,12 +1461,22 @@ export default function App() {
                             <SportIcon sport={workout.sport} className="text-orange-600" size={14} />
                           </div>
                         </div>
-                        <button 
-                          onClick={() => setEditingWorkout(workout)}
-                          className="text-slate-300 hover:text-orange-600 transition-colors p-1"
-                        >
-                          <Edit2 size={14} />
-                        </button>
+                        <div className="flex flex-col gap-1">
+                          <button 
+                            onClick={() => setEditingWorkout(workout)}
+                            className="text-slate-300 hover:text-orange-600 transition-colors p-1"
+                            title="Modifier"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button 
+                            onClick={() => deleteWorkout(workout.id)}
+                            className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   ))}
@@ -1242,7 +1546,10 @@ export default function App() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: idx * 0.05 }}
                             className={cn(
-                              "bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex items-center gap-3 transition-all",
+                              "p-3 rounded-lg border shadow-sm flex items-center gap-3 transition-all",
+                              workout.sport === 'Rest' 
+                                ? "bg-slate-50 border-slate-100 border-dashed" 
+                                : "bg-white border-slate-200",
                               workout.completed && "opacity-60 bg-slate-50"
                             )}
                           >
@@ -1268,19 +1575,43 @@ export default function App() {
                               <div className="flex items-center justify-end gap-1 text-slate-900 font-bold font-mono text-xs">
                                 <span>{workout.durationMinutes}m</span>
                               </div>
-                              <button 
-                                onClick={() => setEditingWorkout(workout)}
-                                className="text-slate-300 hover:text-orange-600 transition-colors p-1"
-                              >
-                                <Edit2 size={14} />
-                              </button>
+                              <div className="flex flex-col gap-1">
+                                <button 
+                                  onClick={() => setEditingWorkout(workout)}
+                                  className="text-slate-300 hover:text-orange-600 transition-colors p-1"
+                                  title="Modifier"
+                                >
+                                  <Edit2 size={14} />
+                                </button>
+                                <button 
+                                  onClick={() => deleteWorkout(workout.id)}
+                                  className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </div>
                           </motion.div>
                         ))}
                       {workouts.filter(w => isSameDay(parseISO(w.date), selectedDate)).length === 0 && (
                         <div className="bg-slate-50 border border-dashed border-slate-200 rounded-lg p-6 text-center">
                           <p className="text-xs text-slate-400 font-medium">Repos ou aucune séance prévue</p>
+                          <button 
+                            onClick={() => handleAddWorkout(selectedDate)}
+                            className="mt-3 text-orange-600 text-[10px] font-bold hover:underline"
+                          >
+                            + Ajouter une séance
+                          </button>
                         </div>
+                      )}
+                      {workouts.filter(w => isSameDay(parseISO(w.date), selectedDate)).length > 0 && (
+                        <button 
+                          onClick={() => handleAddWorkout(selectedDate)}
+                          className="w-full py-3 border border-dashed border-slate-200 rounded-lg text-slate-400 text-[10px] font-bold hover:bg-slate-50 transition-colors"
+                        >
+                          + Ajouter une séance
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1416,7 +1747,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeTab === 'profile' && (
+          {activeTab === 'profile' && editingProfile && (
             <motion.div 
               key="profile"
               initial={{ opacity: 0, y: 10 }}
@@ -1429,8 +1760,8 @@ export default function App() {
                   <div className="absolute -bottom-10 left-6">
                     <div className="w-20 h-20 bg-white rounded-xl p-1 shadow-md relative group">
                       <div className="w-full h-full bg-slate-50 rounded-lg flex items-center justify-center text-slate-300 overflow-hidden">
-                        {profile.avatarUrl ? (
-                          <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                        {editingProfile.avatarUrl ? (
+                          <img src={editingProfile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                         ) : (
                           <User size={40} />
                         )}
@@ -1441,10 +1772,18 @@ export default function App() {
                       </label>
                     </div>
                   </div>
+                  <div className="absolute top-4 right-4">
+                    <button 
+                      onClick={handleSaveProfile}
+                      className="bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-xs hover:bg-orange-700 transition-all shadow-lg flex items-center gap-2"
+                    >
+                      <CheckCircle2 size={14} /> Enregistrer
+                    </button>
+                  </div>
                 </div>
                 <div className="pt-12 pb-5 px-6">
-                  <h2 className="text-xl font-bold tracking-tight">{profile.name || 'Athlète'}</h2>
-                  <p className="mono-label text-slate-400 mt-1">{profile.fitnessLevel} • {profile.goalMode}</p>
+                  <h2 className="text-xl font-bold tracking-tight">{editingProfile.name || 'Athlète'}</h2>
+                  <p className="mono-label text-slate-400 mt-1">{editingProfile.fitnessLevel} • {editingProfile.goalMode}</p>
                 </div>
               </div>
 
@@ -1464,7 +1803,7 @@ export default function App() {
                   </div>
                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
                     <p className="text-[10px] mono-label text-slate-400 mb-1">Connecté en tant que</p>
-                    <p className="text-xs font-bold text-slate-900 truncate">{user.email}</p>
+                    <p className="text-xs font-bold text-slate-900 truncate">{user?.email}</p>
                   </div>
                 </div>
 
@@ -1477,8 +1816,8 @@ export default function App() {
                     <div>
                       <label className="mono-label text-slate-400 block mb-1">Course cible</label>
                       <input 
-                        value={profile.targetRace}
-                        onChange={e => saveProfile({...profile, targetRace: e.target.value})}
+                        value={editingProfile.targetRace}
+                        onChange={e => saveProfile({...editingProfile, targetRace: e.target.value})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
@@ -1486,8 +1825,8 @@ export default function App() {
                       <label className="mono-label text-slate-400 block mb-1">Date</label>
                       <input 
                         type="date"
-                        value={profile.raceDate}
-                        onChange={e => saveProfile({...profile, raceDate: e.target.value})}
+                        value={editingProfile.raceDate}
+                        onChange={e => saveProfile({...editingProfile, raceDate: e.target.value})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
@@ -1504,8 +1843,8 @@ export default function App() {
                       <label className="mono-label text-slate-400 block mb-1">Âge</label>
                       <input 
                         type="number"
-                        value={profile.age}
-                        onChange={e => saveProfile({...profile, age: parseInt(e.target.value)})}
+                        value={editingProfile.age}
+                        onChange={e => saveProfile({...editingProfile, age: parseInt(e.target.value)})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
@@ -1513,8 +1852,8 @@ export default function App() {
                       <label className="mono-label text-slate-400 block mb-1">Poids (kg)</label>
                       <input 
                         type="number"
-                        value={profile.weight}
-                        onChange={e => saveProfile({...profile, weight: parseInt(e.target.value)})}
+                        value={editingProfile.weight}
+                        onChange={e => saveProfile({...editingProfile, weight: parseInt(e.target.value)})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
@@ -1522,16 +1861,16 @@ export default function App() {
                       <label className="mono-label text-slate-400 block mb-1">Taille (cm)</label>
                       <input 
                         type="number"
-                        value={profile.height}
-                        onChange={e => saveProfile({...profile, height: parseInt(e.target.value)})}
+                        value={editingProfile.height}
+                        onChange={e => saveProfile({...editingProfile, height: parseInt(e.target.value)})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
                     <div>
                       <label className="mono-label text-slate-400 block mb-1">Profession</label>
                       <input 
-                        value={profile.profession}
-                        onChange={e => saveProfile({...profile, profession: e.target.value})}
+                        value={editingProfile.profession}
+                        onChange={e => saveProfile({...editingProfile, profession: e.target.value})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
@@ -1548,20 +1887,20 @@ export default function App() {
                     <div className="flex items-center gap-3">
                       <div className={cn(
                         "w-10 h-10 rounded-lg flex items-center justify-center",
-                        profile.stravaConnected ? "bg-orange-100 text-orange-600" : "bg-slate-200 text-slate-400"
+                        editingProfile.stravaConnected ? "bg-orange-100 text-orange-600" : "bg-slate-200 text-slate-400"
                       )}>
                         <Activity size={20} />
                       </div>
                       <div>
                         <p className="text-xs font-bold">Strava</p>
                         <p className="text-[10px] text-slate-400">
-                          {profile.stravaConnected ? "Connecté" : "Non connecté"}
+                          {editingProfile.stravaConnected ? "Connecté" : "Non connecté"}
                         </p>
                       </div>
                     </div>
-                    {profile.stravaConnected ? (
+                    {editingProfile.stravaConnected ? (
                       <button 
-                        onClick={() => saveProfile({...profile, stravaConnected: false, stravaId: undefined})}
+                        onClick={() => saveProfile({...editingProfile, stravaConnected: false, stravaId: undefined})}
                         className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-100 transition-colors"
                       >
                         Déconnecter
@@ -1587,16 +1926,16 @@ export default function App() {
                       <label className="mono-label text-slate-400 block mb-1">Volume Hebdo (h)</label>
                       <input 
                         type="number"
-                        value={profile.weeklyHoursGoal}
-                        onChange={e => saveProfile({...profile, weeklyHoursGoal: parseInt(e.target.value)})}
+                        value={editingProfile.weeklyHoursGoal}
+                        onChange={e => saveProfile({...editingProfile, weeklyHoursGoal: parseInt(e.target.value)})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
                     <div>
                       <label className="mono-label text-slate-400 block mb-1">Niveau</label>
                       <select 
-                        value={profile.fitnessLevel}
-                        onChange={e => saveProfile({...profile, fitnessLevel: e.target.value as any})}
+                        value={editingProfile.fitnessLevel}
+                        onChange={e => saveProfile({...editingProfile, fitnessLevel: e.target.value as any})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       >
                         <option value="Beginner">Débutant</option>
@@ -1614,30 +1953,30 @@ export default function App() {
                       <span className="mono-label">Courses Secondaires</span>
                     </h3>
                     <button 
-                      onClick={() => saveProfile({...profile, secondaryRaces: [...(profile.secondaryRaces || []), { name: 'Nouvelle course', location: '', date: '', objective: '' }]})}
+                      onClick={() => saveProfile({...editingProfile, secondaryRaces: [...(editingProfile.secondaryRaces || []), { name: 'Nouvelle course', location: '', date: '', objective: '' }]})}
                       className="text-orange-600 hover:bg-orange-50 p-1 rounded-md transition-colors"
                     >
                       <Plus size={16} />
                     </button>
                   </div>
                   <div className="space-y-3">
-                    {(profile.secondaryRaces || []).map((race, idx) => (
+                    {(editingProfile.secondaryRaces || []).map((race, idx) => (
                       <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
                         <div className="flex gap-2">
                           <input 
                             placeholder="Nom de la course"
                             value={race.name}
                             onChange={e => {
-                              const newRaces = [...(profile.secondaryRaces || [])];
+                              const newRaces = [...(editingProfile.secondaryRaces || [])];
                               newRaces[idx] = { ...race, name: e.target.value };
-                              saveProfile({...profile, secondaryRaces: newRaces});
+                              saveProfile({...editingProfile, secondaryRaces: newRaces});
                             }}
                             className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-1 focus:ring-orange-500 outline-none"
                           />
                           <button 
                             onClick={() => {
-                              const newRaces = (profile.secondaryRaces || []).filter((_, i) => i !== idx);
-                              saveProfile({...profile, secondaryRaces: newRaces});
+                              const newRaces = (editingProfile.secondaryRaces || []).filter((_, i) => i !== idx);
+                              saveProfile({...editingProfile, secondaryRaces: newRaces});
                             }}
                             className="text-slate-300 hover:text-red-500 transition-colors"
                           >
@@ -1649,9 +1988,9 @@ export default function App() {
                             placeholder="Lieu"
                             value={race.location}
                             onChange={e => {
-                              const newRaces = [...(profile.secondaryRaces || [])];
+                              const newRaces = [...(editingProfile.secondaryRaces || [])];
                               newRaces[idx] = { ...race, location: e.target.value };
-                              saveProfile({...profile, secondaryRaces: newRaces});
+                              saveProfile({...editingProfile, secondaryRaces: newRaces});
                             }}
                             className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[10px] font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                           />
@@ -1659,9 +1998,9 @@ export default function App() {
                             type="date"
                             value={race.date}
                             onChange={e => {
-                              const newRaces = [...(profile.secondaryRaces || [])];
+                              const newRaces = [...(editingProfile.secondaryRaces || [])];
                               newRaces[idx] = { ...race, date: e.target.value };
-                              saveProfile({...profile, secondaryRaces: newRaces});
+                              saveProfile({...editingProfile, secondaryRaces: newRaces});
                             }}
                             className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[10px] font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                           />
@@ -1670,56 +2009,29 @@ export default function App() {
                           placeholder="Objectif (ex: Finisher, Sub 4h...)"
                           value={race.objective}
                           onChange={e => {
-                            const newRaces = [...(profile.secondaryRaces || [])];
+                            const newRaces = [...(editingProfile.secondaryRaces || [])];
                             newRaces[idx] = { ...race, objective: e.target.value };
-                            saveProfile({...profile, secondaryRaces: newRaces});
+                            saveProfile({...editingProfile, secondaryRaces: newRaces});
                           }}
                           className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[10px] font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                         />
                       </div>
                     ))}
-                    {(profile.secondaryRaces || []).length === 0 && (
+                    {(editingProfile.secondaryRaces || []).length === 0 && (
                       <p className="text-[10px] text-slate-400 italic">Aucune course secondaire définie.</p>
                     )}
                   </div>
                 </div>
 
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                  <h3 className="font-bold text-sm flex items-center gap-2">
-                    <Activity size={16} className="text-orange-600" />
-                    <span className="mono-label">Services Connectés</span>
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-[#FC4C02] rounded-md flex items-center justify-center text-white">
-                          <Activity size={18} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold">Strava</p>
-                          <p className="text-[10px] text-slate-400">
-                            {profile.stravaConnected ? 'Connecté' : 'Synchronisation des activités'}
-                          </p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={handleConnectStrava}
-                        disabled={profile.stravaConnected}
-                        className={cn(
-                          "text-[10px] font-bold px-3 py-1 rounded-md transition-all border",
-                          profile.stravaConnected 
-                            ? "text-green-600 bg-green-50 border-green-200 cursor-default"
-                            : "text-orange-600 bg-white border-orange-200 hover:bg-orange-50"
-                        )}
-                      >
-                        {profile.stravaConnected ? 'Connecté' : 'Connecter'}
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-slate-400 italic leading-relaxed">
-                      La connexion à Strava permet à Sub12 d'analyser ta fatigue réelle et d'ajuster ton plan automatiquement.
-                    </p>
-                  </div>
-                </div>
+              </div>
+
+              <div className="flex justify-center pt-8 pb-12">
+                <button 
+                  onClick={handleSaveProfile}
+                  className="w-full max-w-xs bg-orange-600 text-white py-4 rounded-2xl font-black text-sm hover:bg-orange-700 transition-all shadow-xl shadow-orange-600/20 flex items-center justify-center gap-3"
+                >
+                  <CheckCircle2 size={20} /> Enregistrer les modifications
+                </button>
               </div>
             </motion.div>
           )}
@@ -1818,24 +2130,43 @@ export default function App() {
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-orange-500 outline-none resize-none"
                   />
                 </div>
-                <button 
-                  onClick={async () => {
-                    if (!user) return;
-                    const path = `users/${user.uid}/workouts/${editingWorkout.id}`;
-                    try {
-                      await setDoc(doc(db, path), editingWorkout, { merge: true });
-                      setEditingWorkout(null);
-                    } catch (error) {
-                      handleFirestoreError(error, OperationType.UPDATE, path);
-                    }
-                  }}
-                  className="w-full bg-orange-600 text-white py-3 rounded-lg font-bold text-sm hover:bg-orange-700 transition-all shadow-sm"
-                >
-                  Enregistrer les modifications
-                </button>
+                <div className="flex justify-between items-center pt-2">
+                  <button 
+                    onClick={() => deleteWorkout(editingWorkout.id)}
+                    className="text-red-500 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors text-xs font-bold flex items-center gap-2"
+                  >
+                    <Trash2 size={14} /> Supprimer
+                  </button>
+                  <button 
+                    onClick={() => saveWorkout(editingWorkout)}
+                    className="bg-orange-600 text-white px-6 py-2 rounded-lg font-bold text-sm hover:bg-orange-700 transition-all shadow-lg shadow-orange-600/20"
+                  >
+                    Enregistrer
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className={cn(
+              "px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-xl",
+              toast.type === 'success' ? "bg-green-500/90 text-white border-green-400" : "bg-red-500/90 text-white border-red-400"
+            )}>
+              {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+              <span className="text-sm font-bold tracking-tight">{toast.message}</span>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
