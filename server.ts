@@ -7,6 +7,8 @@ import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import fs from "fs";
 
+const firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
+
 // Init Admin SDK
 if (!getApps().length) {
   const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
@@ -16,7 +18,8 @@ if (!getApps().length) {
   initializeApp({ credential: cert(serviceAccount) });
 }
 
-const db = getFirestore();
+const db = getFirestore(undefined, firebaseConfig.firestoreDatabaseId);
+console.log("Firestore Admin SDK initialized with database:", firebaseConfig.firestoreDatabaseId);
 
 async function startServer() {
   const app = express();

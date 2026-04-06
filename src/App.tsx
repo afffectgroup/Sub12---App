@@ -207,7 +207,8 @@ export default function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const recognitionRef = useRef<any>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
@@ -219,12 +220,16 @@ export default function App() {
 
       recognitionRef.current.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
+        console.log("Speech recognized:", transcript);
         handleSendMessage(transcript);
         setIsRecording(false);
       };
 
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          showToast("Accès au micro refusé. Vérifie les paramètres de ton navigateur.", "error");
+        }
         setIsRecording(false);
       };
 
@@ -234,9 +239,20 @@ export default function App() {
     }
   }, []);
 
+  const initAudioContext = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    }
+    if (audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+    return audioContextRef.current;
+  };
+
   const toggleRecording = () => {
+    initAudioContext(); // Resume context on user gesture
     if (!recognitionRef.current) {
-      alert("La reconnaissance vocale n'est pas supportée par ton navigateur ou est bloquée.");
+      showToast("La reconnaissance vocale n'est pas supportée par ton navigateur.", "error");
       return;
     }
 
@@ -253,23 +269,34 @@ export default function App() {
         setIsRecording(true);
       } catch (e) {
         console.error("Start error:", e);
-        alert("Impossible de démarrer le micro. Vérifie les autorisations.");
+        showToast("Impossible de démarrer le micro. Vérifie les autorisations.", "error");
         setIsRecording(false);
       }
     }
   };
 
+  const stopSpeaking = () => {
+    if (currentSourceRef.current) {
+      try {
+        currentSourceRef.current.stop();
+      } catch (e) {}
+      currentSourceRef.current = null;
+    }
+    setIsSpeaking(false);
+  };
+
   const playCoachResponse = async (text: string) => {
     if (isSpeaking) {
-      setIsSpeaking(false);
+      stopSpeaking();
       return;
     }
 
     try {
+      const ctx = initAudioContext();
       setIsSpeaking(true);
+      
       const base64Audio = await generateSpeech(text);
       if (base64Audio) {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
         const binaryString = window.atob(base64Audio);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
@@ -278,19 +305,27 @@ export default function App() {
         }
         
         // Convert PCM16 to Float32
-        const pcm16 = new Int16Array(bytes.buffer);
+        const pcm16 = new Int16Array(bytes.buffer, 0, Math.floor(bytes.byteLength / 2));
         const float32 = new Float32Array(pcm16.length);
         for (let i = 0; i < pcm16.length; i++) {
           float32[i] = pcm16[i] / 32768;
         }
 
-        const buffer = audioContext.createBuffer(1, float32.length, 24000);
+        const buffer = ctx.createBuffer(1, float32.length, 24000);
         buffer.getChannelData(0).set(float32);
 
-        const source = audioContext.createBufferSource();
+        stopSpeaking(); // Stop any current audio
+
+        const source = ctx.createBufferSource();
         source.buffer = buffer;
-        source.connect(audioContext.destination);
-        source.onended = () => setIsSpeaking(false);
+        source.connect(ctx.destination);
+        source.onended = () => {
+          if (currentSourceRef.current === source) {
+            setIsSpeaking(false);
+            currentSourceRef.current = null;
+          }
+        };
+        currentSourceRef.current = source;
         source.start();
       } else {
         setIsSpeaking(false);
@@ -300,6 +335,7 @@ export default function App() {
       setIsSpeaking(false);
     }
   };
+
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
 
   const [user, setUser] = useState<FirebaseUser | null>(null);

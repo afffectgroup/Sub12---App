@@ -189,6 +189,7 @@ export async function getCoachAdvice(message: string, history: { role: 'user' | 
 }
 
 export async function generateSpeech(text: string): Promise<string | undefined> {
+  console.log("Generating speech for text:", text.substring(0, 50) + "...");
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -203,7 +204,13 @@ export async function generateSpeech(text: string): Promise<string | undefined> 
       },
     });
 
-    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (audioData) {
+      console.log("Speech generated successfully, data length:", audioData.length);
+    } else {
+      console.warn("Speech generation returned no audio data.");
+    }
+    return audioData;
   } catch (error) {
     console.error("TTS Error:", error);
     return undefined;
