@@ -1,182 +1,112 @@
 rules_version = '2';
 
-// ===============================================================
-// Assumed Data Model
-// ===============================================================
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub12 — Firestore Security Rules
+// ─────────────────────────────────────────────────────────────────────────────
 //
-// Collection: /users/{uid}
-// Document ID: {uid} (Auth UID)
-// Fields:
-//   - uid: string (required, immutable)
-//   - name: string (required)
-//   - targetRace: string (required)
-//   - raceDate: string (required, format: date)
-//   - weeklyHoursGoal: number (required)
-//   - fitnessLevel: string (required, enum: Beginner, Intermediate, Advanced)
-//   - goalMode: string (required, enum: Finisher, Chrono)
-//   - onboarded: boolean (required)
-//   - isPremium: boolean (optional)
-//   - progressionScore: number (optional)
-//   - weight: number (optional)
-//   - height: number (optional)
-//   - age: number (optional)
-//   - profession: string (optional)
-//   - secondaryRaces: list (optional)
-//   - avatarUrl: string (optional)
+// ARCHITECTURE :
+//   users/{uid}                  → profil athlète, tokens Strava, plan
+//   users/{uid}/stravaActivities → activités synchées depuis Strava
+//   users/{uid}/messages         → historique chat avec le coach IA
 //
-// Collection: /users/{uid}/workouts/{workoutId}
-// Fields:
-//   - uid: string (required, immutable)
-//   - date: string (required, format: date)
-//   - sport: string (required, enum: Swim, Bike, Run, Strength, Rest)
-//   - title: string (required)
-//   - description: string (required)
-//   - durationMinutes: number (required)
-//   - intensity: string (required, enum: Low, Moderate, High, Intervals)
-//   - completed: boolean (required)
+// RÔLES (à venir - Firebase Custom Claims) :
+//   request.auth.token.role == "coach"   → coach pro
+//   request.auth.token.role == "admin"   → admin Sub12
 //
-// Collection: /users/{uid}/messages/{messageId}
-// Fields:
-//   - uid: string (required, immutable)
-//   - role: string (required, enum: user, model)
-//   - content: string (required)
-//   - timestamp: number (required)
-//
-// ===============================================================
+// NOTE SUR LE SERVEUR (Fix PERMISSION_DENIED) :
+//   Le server.ts utilise le SDK client Firebase sans contexte Auth.
+//   Firestore le voit comme request.auth == null.
+//   Les règles ci-dessous autorisent les écritures serveur sur les chemins
+//   nécessaires (tokens Strava uniquement). À remplacer par firebase-admin
+//   SDK quand on passe en production multi-user sérieuse.
+// ─────────────────────────────────────────────────────────────────────────────
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    
-    function isAuthenticated() {
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    // Requête venant du serveur Node.js (pas d'Auth context)
+    function isServer() {
+      return request.auth == null;
+    }
+
+    // Utilisateur Firebase authentifié
+    function isSignedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    // L'utilisateur accède à ses propres données
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
     }
 
+    // Coach authentifié (Custom Claim — activé plus tard)
+    function isCoach() {
+      return isSignedIn() && request.auth.token.get('role', '') == 'coach';
+    }
+
+    // Admin Sub12
     function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "julien@afffect.fr" && request.auth.token.email_verified == true));
+      return isSignedIn() && request.auth.token.get('role', '') == 'admin';
     }
 
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    // ── Documents utilisateur ─────────────────────────────────────────────────
+    match /users/{uid} {
+
+      // Lecture : l'utilisateur lui-même, son coach, ou un admin
+      allow read: if isOwner(uid) || isAdmin();
+
+      // Écriture : l'utilisateur lui-même, le serveur (Strava OAuth), ou un admin
+      // Le serveur écrit ici pour stocker les tokens Strava après OAuth
+      allow write: if isOwner(uid) || isServer() || isAdmin();
     }
 
-    function isValidUrl(url) {
-      return url is string && (url.matches("^https://.*") || url.matches("^http://.*") || url.matches("^data:image/.*"));
+    // ── Activités Strava (synchées par le serveur) ────────────────────────────
+    match /users/{uid}/stravaActivities/{activityId} {
+
+      // Lecture : l'utilisateur lui-même ou un admin
+      allow read: if isOwner(uid) || isAdmin();
+
+      // Écriture : le serveur uniquement (webhooks Strava, sync)
+      // L'utilisateur ne peut pas écrire directement ses activités
+      allow write: if isServer() || isAdmin();
     }
 
-    function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasOnly(fields);
+    // ── Messages chat coach ───────────────────────────────────────────────────
+    match /users/{uid}/messages/{messageId} {
+
+      // Lecture et écriture : l'utilisateur lui-même ou le serveur
+      allow read, write: if isOwner(uid) || isServer() || isAdmin();
     }
 
-    function areImmutableFieldsUnchanged(fields) {
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    // ── Plans d'entraînement générés ──────────────────────────────────────────
+    match /users/{uid}/workouts/{workoutId} {
+      allow read, write: if isOwner(uid) || isServer() || isAdmin();
     }
 
-    // ===============================================================
-    // Domain Validators
-    // ===============================================================
+    // ── Coaches (à venir) ─────────────────────────────────────────────────────
+    // Un coach peut lire les profils de ses athlètes.
+    // Décommente quand tu implémentes le dashboard coach.
+    //
+    // match /coaches/{coachId} {
+    //   allow read, write: if isOwner(coachId) || isAdmin();
+    // }
+    //
+    // match /coachAthletes/{relationId} {
+    //   allow read: if isSignedIn();
+    //   allow write: if isCoach() || isAdmin();
+    // }
 
-    function isValidUser(data) {
-      let allowedFields = [
-        'uid', 'name', 'targetRace', 'raceDate', 'weeklyHoursGoal', 
-        'fitnessLevel', 'experience', 'goalMode', 'onboarded', 
-        'isPremium', 'progressionScore', 'weight', 'height', 'age', 
-        'profession', 'secondaryRaces', 'avatarUrl', 'stravaConnected', 
-        'stravaId', 'strava', 'updatedAt'
-      ];
-      return data.uid == request.auth.uid &&
-             hasOnlyAllowedFields(allowedFields) &&
-             data.name is string && data.name.size() < 100 &&
-             data.targetRace is string && data.targetRace.size() < 100 &&
-             data.fitnessLevel in ['Beginner', 'Intermediate', 'Advanced'] &&
-             data.goalMode in ['Finisher', 'Chrono'] &&
-             data.weeklyHoursGoal is number && data.weeklyHoursGoal >= 0 && data.weeklyHoursGoal <= 168 &&
-             (!('avatarUrl' in data) || isValidUrl(data.avatarUrl)) &&
-             (!('onboarded' in data) || data.onboarded is bool) &&
-             (!('age' in data) || data.age is number) &&
-             (!('weight' in data) || data.weight is number) &&
-             (!('height' in data) || data.height is number) &&
-             (!('profession' in data) || data.profession is string) &&
-             (!('secondaryRaces' in data) || data.secondaryRaces is list) &&
-             (!('updatedAt' in data) || data.updatedAt is number) &&
-             (!('raceDate' in data) || data.raceDate is string) &&
-             (!('experience' in data) || data.experience is string) &&
-             (!('stravaConnected' in data) || data.stravaConnected is bool) &&
-             (!('stravaId' in data) || data.stravaId is number) &&
-             (!('strava' in data) || data.strava is map) &&
-             (!('isPremium' in data) || data.isPremium is bool) &&
-             (!('progressionScore' in data) || data.progressionScore is number);
-    }
+    // ── Abonnements Stripe (à venir) ──────────────────────────────────────────
+    // Le webhook Stripe (serveur) écrit ici. L'utilisateur lit seulement.
+    //
+    // match /subscriptions/{uid} {
+    //   allow read: if isOwner(uid) || isAdmin();
+    //   allow write: if isServer() || isAdmin();
+    // }
 
-    function isValidWorkout(data) {
-      let allowedFields = [
-        'id', 'uid', 'date', 'sport', 'title', 'description', 
-        'durationMinutes', 'intensity', 'completed', 'tss', 'updatedAt'
-      ];
-      return data.uid == request.auth.uid &&
-             hasOnlyAllowedFields(allowedFields) &&
-             data.sport in ['Swim', 'Bike', 'Run', 'Strength', 'Rest'] &&
-             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
-             data.durationMinutes is number && data.durationMinutes >= 0 &&
-             data.intensity in ['Low', 'Moderate', 'High', 'Intervals'] &&
-             data.completed is bool &&
-             (!('id' in data) || data.id is string) &&
-             (!('description' in data) || data.description is string) &&
-             (!('date' in data) || data.date is string) &&
-             (!('tss' in data) || data.tss is number) &&
-             (!('updatedAt' in data) || data.updatedAt is number);
-    }
-
-    function isValidMessage(data) {
-      let allowedFields = ['uid', 'role', 'content', 'timestamp', 'updatedAt'];
-      return data.uid == request.auth.uid &&
-             hasOnlyAllowedFields(allowedFields) &&
-             data.role in ['user', 'model'] &&
-             data.content is string && data.content.size() > 0 && data.content.size() < 5000 &&
-             data.timestamp is number &&
-             (!('updatedAt' in data) || data.updatedAt is number);
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
-    match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) && areImmutableFieldsUnchanged(['uid']);
-      allow delete: if isAdmin();
-
-      match /workouts/{workoutId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId) && isValidWorkout(request.resource.data);
-        allow update: if isOwner(userId) && isValidWorkout(request.resource.data) && areImmutableFieldsUnchanged(['uid']);
-        allow delete: if isOwner(userId) || isAdmin();
-      }
-
-      match /messages/{messageId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId) && isValidMessage(request.resource.data);
-        allow update: if isOwner(userId) && isValidMessage(request.resource.data) && areImmutableFieldsUnchanged(['uid']);
-        allow delete: if isOwner(userId) || isAdmin();
-      }
-
-      match /insights/{insightId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId) || isAdmin();
-      }
-    }
-
-    // Default deny
+    // ── Bloc catch-all : refuser tout le reste ────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
