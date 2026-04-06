@@ -34,7 +34,7 @@ import {
   Volume2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format, differenceInDays, parseISO, addDays, isSameDay } from 'date-fns';
+import { format, differenceInDays, parseISO, addDays, isSameDay, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { 
   LineChart, 
@@ -614,7 +614,7 @@ export default function App() {
     }
   };
 
-  const daysToRace = differenceInDays(parseISO(profile.raceDate), new Date());
+  const daysToRace = differenceInDays(startOfDay(parseISO(profile.raceDate)), startOfDay(new Date()));
 
   if (!isAuthReady) {
     return (
@@ -842,32 +842,34 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-24">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 px-4 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center text-orange-500 shadow-sm">
-            <Activity size={22} strokeWidth={2.5} />
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 px-4 py-3">
+        <div className="max-w-4xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center text-orange-500 shadow-sm">
+              <Activity size={22} strokeWidth={2.5} />
+            </div>
+            <div>
+              <h1 className="font-bold text-base leading-none tracking-tight">Sub12</h1>
+              <p className="mono-label text-slate-400 mt-0.5">Performance Engine</p>
+            </div>
           </div>
-          <div>
-            <h1 className="font-bold text-base leading-none tracking-tight">Sub12</h1>
-            <p className="mono-label text-slate-400 mt-0.5">Performance Engine</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {!profile.isPremium && (
-            <button className="hidden md:block bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-slate-800 transition-colors">
-              Premium
+          <div className="flex items-center gap-3">
+            {!profile.isPremium && (
+              <button className="hidden md:block bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-slate-800 transition-colors">
+                Premium
+              </button>
+            )}
+            <div className="text-right hidden sm:block">
+              <p className="mono-label text-orange-600">{profile.targetRace}</p>
+              <p className="text-sm font-bold font-mono">D-{daysToRace}</p>
+            </div>
+            <button 
+              onClick={() => setActiveTab('profile')}
+              className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 hover:bg-slate-200 transition-colors"
+            >
+              <User size={20} className="text-slate-600" />
             </button>
-          )}
-          <div className="text-right hidden sm:block">
-            <p className="mono-label text-orange-600">{profile.targetRace}</p>
-            <p className="text-sm font-bold font-mono">D-{daysToRace}</p>
           </div>
-          <button 
-            onClick={() => setActiveTab('profile')}
-            className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 hover:bg-slate-200 transition-colors"
-          >
-            <User size={20} className="text-slate-600" />
-          </button>
         </div>
       </header>
 
@@ -1670,8 +1672,8 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-white/80 backdrop-blur-xl border border-white/20 px-6 py-3 z-40 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
-        <div className="flex justify-between items-center">
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-4xl z-40">
+        <div className="max-w-md mx-auto bg-white/80 backdrop-blur-xl border border-white/20 px-6 py-3 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] flex justify-between items-center">
           <NavButton 
             active={activeTab === 'dashboard'} 
             onClick={() => setActiveTab('dashboard')} 

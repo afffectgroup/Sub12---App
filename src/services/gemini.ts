@@ -2,7 +2,12 @@ import { GoogleGenAI, Type, FunctionDeclaration, Modality } from "@google/genai"
 import { AthleteProfile, Workout, ChatMessage } from "../types";
 
 const apiKey = process.env.GEMINI_API_KEY as string;
-const ai = new GoogleGenAI({ apiKey });
+if (!apiKey || apiKey === "undefined") {
+  console.warn("GEMINI_API_KEY is not defined in the environment. Chat and Plan generation will fail.");
+} else {
+  console.log("GEMINI_API_KEY is defined.");
+}
+const ai = new GoogleGenAI({ apiKey: (apiKey === "undefined" ? "" : apiKey) });
 
 const updateWorkoutsTool: FunctionDeclaration = {
   name: "updateWorkouts",
@@ -38,6 +43,9 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
     ? `Prends en compte les échanges récents avec l'athlète: ${chatHistory.slice(-5).map(h => `${h.role}: ${h.content}`).join(' | ')}`
     : "";
 
+  // Use local date to avoid UTC offset issues
+  const today = new Date().toLocaleDateString('en-CA'); 
+
   const prompt = `
     Génère un plan d'entraînement de 7 jours pour un athlète préparant un ${profile.targetRace} le ${profile.raceDate}.
     Profil: ${profile.fitnessLevel}, Objectif d'heures hebdo: ${profile.weeklyHoursGoal}h.
@@ -48,7 +56,7 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
     ${historyContext}
     
     IMPORTANT: 
-    - Le plan doit commencer aujourd'hui (${new Date().toISOString().split('T')[0]}).
+    - Le plan doit commencer aujourd'hui (${today}).
     - Chaque séance doit avoir un ID unique (ex: "workout-1", "workout-2", etc.).
     - Respecte strictement le format JSON demandé.
     - Si l'athlète est fatigué ou a des contraintes (voir historique), adapte le plan en conséquence.
@@ -104,6 +112,11 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
 }
 
 export async function getCoachAdvice(message: string, history: { role: 'user' | 'model', content: string }[], profile: AthleteProfile) {
+  if (!apiKey) {
+    console.error("GEMINI_API_KEY is missing. Please set it in the environment.");
+    return { text: "Désolé, je ne peux pas répondre pour le moment car ma clé API est manquante. Vérifie la configuration dans les paramètres." };
+  }
+
   const systemInstruction = `
     Tu es "Coach Sub12", l'IA d'élite dédiée aux entrepreneurs et cadres qui visent le Sub12 sur Ironman (ou performance équivalente en endurance).
     Ton athlète s'appelle ${profile.name}. Utilise son prénom régulièrement pour créer une relation de confiance.
@@ -123,22 +136,27 @@ export async function getCoachAdvice(message: string, history: { role: 'user' | 
     - Termine souvent par une question courte pour maintenir l'engagement.
   `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: [
-      ...history.map(h => ({ role: h.role, parts: [{ text: h.content }] })),
-      { role: 'user', parts: [{ text: message }] }
-    ],
-    config: {
-      systemInstruction,
-      tools: [{ functionDeclarations: [updateWorkoutsTool] }]
-    },
-  });
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        ...history.map(h => ({ role: h.role, parts: [{ text: h.content }] })),
+        { role: 'user', parts: [{ text: message }] }
+      ],
+      config: {
+        systemInstruction,
+        tools: [{ functionDeclarations: [updateWorkoutsTool] }]
+      },
+    });
 
-  return {
-    text: response.text,
-    functionCalls: response.functionCalls
-  };
+    return {
+      text: response.text,
+      functionCalls: response.functionCalls
+    };
+  } catch (error) {
+    console.error("Gemini Coach Advice Error:", error);
+    throw error;
+  }
 }
 
 export async function generateSpeech(text: string): Promise<string | undefined> {
