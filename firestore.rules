@@ -91,7 +91,8 @@ service cloud.firestore {
         'fitnessLevel', 'experience', 'goalMode', 'onboarded', 
         'isPremium', 'progressionScore', 'weight', 'height', 'age', 
         'profession', 'secondaryRaces', 'avatarUrl', 'stravaConnected', 
-        'stravaId', 'strava', 'updatedAt'
+        'stravaId', 'strava', 'updatedAt', 'coachGender', 'coachName',
+        'voiceEnabled', 'gender', 'prs'
       ];
       return data.uid == request.auth.uid &&
              hasOnlyAllowedFields(allowedFields) &&
@@ -114,7 +115,12 @@ service cloud.firestore {
              (!('stravaId' in data) || data.stravaId is number) &&
              (!('strava' in data) || data.strava is map) &&
              (!('isPremium' in data) || data.isPremium is bool) &&
-             (!('progressionScore' in data) || data.progressionScore is number);
+             (!('progressionScore' in data) || data.progressionScore is number) &&
+             (!('coachGender' in data) || data.coachGender in ['Man', 'Woman']) &&
+             (!('coachName' in data) || data.coachName is string) &&
+             (!('voiceEnabled' in data) || data.voiceEnabled is bool) &&
+             (!('gender' in data) || data.gender in ['Man', 'Woman']) &&
+             (!('prs' in data) || data.prs is map);
     }
 
     function isValidWorkout(data) {
@@ -137,13 +143,14 @@ service cloud.firestore {
     }
 
     function isValidMessage(data) {
-      let allowedFields = ['uid', 'role', 'content', 'timestamp', 'updatedAt'];
+      let allowedFields = ['uid', 'role', 'content', 'timestamp', 'updatedAt', 'image'];
       return data.uid == request.auth.uid &&
              hasOnlyAllowedFields(allowedFields) &&
              data.role in ['user', 'model'] &&
-             data.content is string && data.content.size() > 0 && data.content.size() < 5000 &&
+             data.content is string && data.content.size() >= 0 && data.content.size() < 10000 &&
              data.timestamp is number &&
-             (!('updatedAt' in data) || data.updatedAt is number);
+             (!('updatedAt' in data) || data.updatedAt is number) &&
+             (!('image' in data) || (data.image is string && data.image.size() < 2000000));
     }
 
     // ===============================================================

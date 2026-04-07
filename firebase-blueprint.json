@@ -22,7 +22,24 @@
         "profession": { "type": "string" },
         "secondaryRaces": { "type": "array", "items": { "type": "string" } },
         "avatarUrl": { "type": "string" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "coachGender": { "type": "string", "enum": ["Man", "Woman"] },
+        "coachName": { "type": "string" },
+        "voiceEnabled": { "type": "boolean" },
+        "gender": { "type": "string", "enum": ["Man", "Woman"] },
+        "prs": {
+          "type": "object",
+          "properties": {
+            "vma": { "type": "number" },
+            "ftp": { "type": "number" },
+            "css": { "type": "string" },
+            "maxHr": { "type": "number" },
+            "restHr": { "type": "number" }
+          }
+        },
+        "stravaConnected": { "type": "boolean" },
+        "stravaId": { "type": "number" },
+        "strava": { "type": "object" },
+        "updatedAt": { "type": "number" }
       },
       "required": ["uid", "name", "targetRace", "raceDate", "weeklyHoursGoal", "fitnessLevel", "goalMode", "onboarded"]
     },
@@ -51,7 +68,8 @@
         "uid": { "type": "string", "description": "User UID" },
         "role": { "type": "string", "enum": ["user", "model"] },
         "content": { "type": "string" },
-        "timestamp": { "type": "number" }
+        "timestamp": { "type": "number" },
+        "image": { "type": "string", "description": "Base64 image string" }
       },
       "required": ["uid", "role", "content", "timestamp"]
     }
