@@ -3,12 +3,12 @@ import { AthleteProfile, Workout, ChatMessage } from "../types";
 import { differenceInDays, parseISO } from "date-fns";
 
 const apiKey = process.env.GEMINI_API_KEY as string;
-if (!apiKey || apiKey === "undefined") {
+if (!apiKey || apiKey === "undefined" || apiKey === "") {
   console.warn("GEMINI_API_KEY is not defined in the environment. Chat and Plan generation will fail.");
 } else {
   console.log("GEMINI_API_KEY is defined.");
 }
-const ai = new GoogleGenAI({ apiKey: (apiKey === "undefined" ? "" : apiKey) });
+const ai = new GoogleGenAI({ apiKey: (apiKey === "undefined" || !apiKey) ? "" : apiKey });
 
 const updateWorkoutsTool: FunctionDeclaration = {
   name: "updateWorkouts",
@@ -62,7 +62,8 @@ export async function generateDailyCoachInsight(profile: AthleteProfile, lastAct
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      // ✅ FIX: "gemini-3-flash-preview" n'existe pas → "gemini-2.0-flash"
+      model: "gemini-2.0-flash",
       contents: prompt,
     });
     return response.text || "Focus sur l'objectif. Chaque watt compte.";
@@ -109,7 +110,8 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      // ✅ FIX: "gemini-3-flash-preview" n'existe pas → "gemini-2.0-flash"
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -164,7 +166,7 @@ export async function getCoachAdvice(
   onStream?: (text: string) => void,
   image?: string
 ) {
-  if (!apiKey) {
+  if (!apiKey || apiKey === "" || apiKey === "undefined") {
     console.error("GEMINI_API_KEY is missing. Please set it in the environment.");
     return { text: "Désolé, je ne peux pas répondre pour le moment car ma clé API est manquante. Vérifie la configuration dans les paramètres." };
   }
@@ -181,7 +183,7 @@ export async function getCoachAdvice(
     Ton expertise s'adresse à des athlètes comme ${profile.name}, souvent des entrepreneurs ou cadres avec un emploi du temps chargé, visant le "Sub12" (moins de 12h sur Ironman).
 
     TON IDENTITÉ:
-    - Tu es un coach de classe mondiale. Tu es exigeant sur la discipline mais tu comprends les contraintes de la vie réelle (famille, travail).
+    - Tu es un coach de classe mondiale. Tu es exigeant sur la discipline mais tu comprends les contraintes de la vie réelle (famile, travail).
     - Ton ton est professionnel, motivant, et basé sur les faits.
     - Tu détestes les réponses génériques. Chaque conseil doit être ancré dans les données de l'athlète.
 
@@ -234,7 +236,8 @@ export async function getCoachAdvice(
       }
 
       const result = await ai.models.generateContentStream({
-        model: "gemini-3-flash-preview",
+        // ✅ FIX: "gemini-3-flash-preview" n'existe pas → "gemini-2.0-flash"
+        model: "gemini-2.0-flash",
         contents: [
           ...limitedHistory.map(h => ({ role: h.role, parts: [{ text: h.content }] })),
           { role: 'user', parts: userParts }
