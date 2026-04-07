@@ -225,8 +225,7 @@ const Logo = ({ className = "w-10 h-10", iconOnly = false }: { className?: strin
   </div>
 );
 
-const LandingPage = ({ onLogin, onLoginStrava }: { onLogin: () => void, onLoginStrava: () => void }) => {
-  return (
+const LandingPage = ({ onLogin }: { onLogin: () => void }) => {  return (
     <div className="min-h-screen bg-white selection:bg-orange-100">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
@@ -265,12 +264,6 @@ const LandingPage = ({ onLogin, onLoginStrava }: { onLogin: () => void, onLoginS
                 className="bg-orange-600 text-white px-10 py-5 rounded-2xl font-black text-lg hover:bg-orange-700 transition-all shadow-2xl shadow-orange-500/20 active:scale-95 flex items-center justify-center gap-3"
               >
                 Commencer maintenant <ArrowRight size={20} />
-              </button>
-              <button 
-                onClick={onLoginStrava}
-                className="bg-[#FC4C02] text-white px-10 py-5 rounded-2xl font-black text-lg hover:bg-[#E34402] transition-all shadow-2xl shadow-orange-500/10 active:scale-95 flex items-center justify-center gap-3"
-              >
-                <Activity size={20} /> Login with Strava
               </button>
             </div>
             <div className="flex items-center gap-6 pt-8">
@@ -1122,7 +1115,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <LandingPage onLogin={handleLogin} onLoginStrava={handleLoginStrava} />;
+    return <LandingPage onLogin={handleLogin} />;
   }
 
   if (!profile.onboarded) {
