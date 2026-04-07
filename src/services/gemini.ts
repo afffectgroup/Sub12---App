@@ -81,20 +81,30 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
   const today = new Date().toLocaleDateString('en-CA'); 
 
   const prompt = `
-    Génère un plan d'entraînement de 7 jours pour un athlète préparant un ${profile.targetRace} le ${profile.raceDate}.
-    Profil: ${profile.fitnessLevel}, Objectif d'heures hebdo: ${profile.weeklyHoursGoal}h.
-    Âge: ${profile.age}, Poids: ${profile.weight}kg, Taille: ${profile.height}cm.
-    Métier: ${profile.profession}.
-    Courses secondaires: ${(profile.secondaryRaces || []).map(r => `${r.name} (${r.date} à ${r.location}, Objectif: ${r.objective})`).join(', ')}.
-    Expérience: ${profile.experience}.
+    Tu es un coach expert en triathlon longue distance. Génère un plan d'entraînement de 7 jours ultra-personnalisé pour ${profile.name}.
+    
+    PROFIL DE L'ATHLÈTE:
+    - Objectif: ${profile.targetRace} le ${profile.raceDate}.
+    - Niveau: ${profile.fitnessLevel}, Mode: ${profile.goalMode}.
+    - Objectif d'heures hebdo: ${profile.weeklyHoursGoal}h.
+    - Âge: ${profile.age}, Poids: ${profile.weight}kg, Taille: ${profile.height}cm.
+    - Métier: ${profile.profession} (prends en compte la fatigue mentale/physique liée au métier).
+    - Expérience: ${profile.experience}.
+    
     ${historyContext}
     
-    IMPORTANT: 
-    - Le plan doit commencer aujourd'hui (${today}).
-    - Chaque séance doit avoir un ID unique (ex: "workout-1", "workout-2", etc.).
-    - Respecte strictement le format JSON demandé.
-    - Si l'athlète est fatigué ou a des contraintes (voir historique), adapte le plan en conséquence.
-    - Inclus des séances variées (Z2, Seuil, Intervalles, Renforcement, Repos).
+    DIRECTIVES DE PLANIFICATION:
+    1. PROGRESSION: Le plan doit être cohérent avec le niveau ${profile.fitnessLevel}.
+    2. VARIÉTÉ: Inclus un mélange de :
+       - Endurance Fondamentale (Zone 2) - la base.
+       - Travail de Seuil (Tempo/Z3-Z4).
+       - Intervalles (VMA/PMA) pour la puissance.
+       - Renforcement musculaire spécifique (Gainage/Force).
+       - Repos complet ou actif.
+    3. RÉALISME: Ne dépasse pas l'objectif de ${profile.weeklyHoursGoal}h par semaine.
+    4. FORMAT: Utilise strictement le format JSON fourni.
+    
+    IMPORTANT: Le plan doit commencer aujourd'hui (${today}).
   `;
 
   try {
@@ -158,39 +168,53 @@ export async function getCoachAdvice(
     return { text: "Désolé, je ne peux pas répondre pour le moment car ma clé API est manquante. Vérifie la configuration dans les paramètres." };
   }
 
-  const planContext = currentPlan.slice(0, 7).map(w => `${w.date}: ${w.title} (${w.sport}, ${w.durationMinutes}min)`).join('\n');
-  const activityContext = lastActivities.slice(0, 3).map(a => `${a.name}: ${Math.round(a.distance / 1000)}km, ${a.total_elevation_gain}m D+`).join('\n');
+  const planContext = currentPlan.slice(0, 10).map(w => `- ${w.date}: ${w.title} (${w.sport}, ${w.durationMinutes}min, ${w.intensity})`).join('\n');
+  const activityContext = lastActivities.slice(0, 5).map(a => `- ${a.name}: ${Math.round(a.distance / 1000 * 10) / 10}km, ${a.total_elevation_gain}m D+, ${Math.round(a.moving_time / 60)}min`).join('\n');
+  const prContext = profile.prs ? `\nRECORDS PERSONNELS (PRs):\n- VMA: ${profile.prs.vma}km/h\n- FTP: ${profile.prs.ftp}W\n- CSS: ${profile.prs.css}\n- FC Max: ${profile.prs.maxHr}` : "";
   const gender = profile.coachGender === 'Woman' ? "une coach femme" : "un coach homme";
   const coachName = profile.coachName || "Coach Sub12";
+  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   const systemInstruction = `
-    Tu es "${coachName}", ${gender} d'élite dédiée aux entrepreneurs et cadres qui visent le Sub12 sur Ironman.
-    Ton athlète s'appelle ${profile.name}.
-    Objectif principal: ${profile.targetRace} (${profile.raceDate}).
-    Profil: ${profile.fitnessLevel}, Métier: ${profile.profession}.
-    
-    CONTEXTE ATHLÈTE:
-    PLANNING DES 7 PROCHAINS JOURS:
+    Tu es "${coachName}", ${gender} d'élite spécialisée dans le triathlon longue distance (Ironman). 
+    Ton expertise s'adresse à des athlètes comme ${profile.name}, souvent des entrepreneurs ou cadres avec un emploi du temps chargé, visant le "Sub12" (moins de 12h sur Ironman).
+
+    TON IDENTITÉ:
+    - Tu es un coach de classe mondiale. Tu es exigeant sur la discipline mais tu comprends les contraintes de la vie réelle (famille, travail).
+    - Ton ton est professionnel, motivant, et basé sur les faits.
+    - Tu détestes les réponses génériques. Chaque conseil doit être ancré dans les données de l'athlète.
+
+    CONTEXTE DE L'ATHLÈTE:
+    - Objectif: ${profile.targetRace} (${profile.raceDate}).
+    - Niveau: ${profile.fitnessLevel}, Métier: ${profile.profession}.
+    - Genre: ${profile.gender === 'Woman' ? 'Femme' : 'Homme'}.
+    ${prContext}
+
+    PLANNING ACTUEL (10 prochains jours):
     ${planContext}
-    
-    DERNIÈRES ACTIVITÉS STRAVA:
+
+    HISTORIQUE RÉCENT (Strava):
     ${activityContext}
-    
-    TON ADN & RÈGLES DE RÉPONSE:
-    1. CONCISION ABSOLUE: Tes réponses doivent être ultra-courtes (max 40-50 mots). Pas de blabla, pas de politesses.
-    2. MOTIVATION: Sois inspirant, exigeant mais bienveillant.
-    3. EXPERTISE: Utilise le vocabulaire technique (TSS, FTP, Z2) seulement si nécessaire.
-    4. ANALYSE D'IMAGE: Si l'athlète t'envoie une capture d'écran (séance, graphique, erreur), analyse-la précisément pour donner un conseil actionnable.
-    5. ADAPTATION: Si l'athlète parle de fatigue ou manque de temps, propose d'adapter le plan via l'outil updateWorkouts.
-    
-    RÈGLES D'OR:
-    - Ne dépasse jamais 1-2 paragraphes très courts.
-    - Termine par une question ou un encouragement fort.
-    - IMPORTANT: Si tu utilises l'outil "updateWorkouts", NE METS PAS le JSON dans ta réponse texte. Ta réponse texte doit rester une conversation naturelle.
+
+    DATE AUJOURD'HUI: ${today}
+
+    RÈGLES DE RÉPONSE:
+    1. ANALYSE AVANT DE RÉPONDRE: Regarde toujours les dernières activités Strava par rapport au plan prévu. Si l'athlète a trop forcé ou pas assez, mentionne-le.
+    2. CONCISION EXPERTE: Vise 60-100 mots. Sois dense en informations utiles.
+    3. VOCABULAIRE: Utilise Z2, FTP, VMA, TSS, Allure, Cadence. Explique brièvement si l'athlète semble perdu.
+    4. ADAPTATION PROACTIVE: Si l'athlète exprime un doute, une douleur ou un manque de temps, n'attends pas qu'il te le demande : propose d'ajuster le plan via "updateWorkouts".
+    5. ANALYSE D'IMAGE: Si une image est fournie, décris ce que tu vois et donne un conseil technique immédiat.
+
+    IMPORTANT: 
+    - Si tu modifies le plan, explique CLAIREMENT les changements (ex: "J'ai allégé ta séance de demain car tu as fait une grosse sortie aujourd'hui").
+    - NE METS JAMAIS de JSON brut dans ta réponse texte.
   `;
 
   const maxRetries = 3;
   let retryCount = 0;
+
+  // Limit history to last 10 messages to maintain focus and context window efficiency
+  const limitedHistory = history.slice(-10);
 
   while (retryCount < maxRetries) {
     try {
@@ -210,7 +234,7 @@ export async function getCoachAdvice(
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [
-          ...history.map(h => ({ role: h.role, parts: [{ text: h.content }] })),
+          ...limitedHistory.map(h => ({ role: h.role, parts: [{ text: h.content }] })),
           { role: 'user', parts: userParts }
         ],
         config: {

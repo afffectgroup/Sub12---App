@@ -1127,26 +1127,8 @@ export default function App() {
       setSelectedImage(null); // Clear image after sending
       setActiveTab('coach');
 
-      let stravaContext = "";
-      if (profile.stravaConnected) {
-        try {
-          const response = await fetch(`/api/strava/activities?uid=${user.uid}`);
-          if (response.ok) {
-            const activities = await response.json();
-            stravaContext = "\n\nDonnées Strava récentes :\n" + activities.slice(0, 5).map((a: any) => 
-              `- ${a.type} : ${Math.round(a.distance / 1000 * 10) / 10}km en ${Math.round(a.moving_time / 60)}min (${a.start_date_local})`
-            ).join('\n');
-          }
-        } catch (e) {
-          console.error("Failed to fetch Strava context:", e);
-        }
-      }
-
-      const prContext = profile.prs ? `\n\nRecords Personnels (PRs) : VMA: ${profile.prs.vma}km/h, FTP: ${profile.prs.ftp}W, CSS: ${profile.prs.css}, FC Max: ${profile.prs.maxHr}` : "";
-      const genderContext = `\n\nL'athlète est un(e) ${profile.gender === 'Woman' ? 'Femme' : 'Homme'}.`;
-
       const { text, functionCalls } = await getCoachAdvice(
-        content + stravaContext + prContext + genderContext, 
+        content, 
         chatHistory, 
         profile, 
         workouts, 
