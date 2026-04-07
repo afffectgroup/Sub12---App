@@ -418,6 +418,9 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [messageInput, setMessageInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -447,15 +450,10 @@ export default function App() {
           }
         }
 
-        const input = document.querySelector('input[name="message"]') as HTMLInputElement;
-        if (input) {
-          // If it's final, we append it. If it's interim, we show it.
-          // For simplicity, we'll just update the value with the latest transcript
-          const currentTranscript = Array.from(event.results)
-            .map((result: any) => result[0].transcript)
-            .join('');
-          input.value = currentTranscript;
-        }
+        const currentTranscript = Array.from(event.results)
+          .map((result: any) => result[0].transcript)
+          .join('');
+        setMessageInput(currentTranscript);
       };
 
       recognitionRef.current.onerror = (event: any) => {
@@ -1095,21 +1093,36 @@ export default function App() {
     }
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   async function handleSendMessage(content: string) {
-    if (!content.trim() || !user) return;
+    if (!content.trim() && !selectedImage) return;
+    if (!user) return;
     
     const timestamp = Date.now();
     const userMsg: ChatMessage = { 
       uid: user.uid, 
       role: 'user', 
       content, 
-      timestamp 
+      timestamp,
+      image: selectedImage || undefined
     };
     const userMsgPath = `users/${user.uid}/messages/${timestamp}`;
     
     try {
       setIsLoading(true);
       await setDoc(doc(db, userMsgPath), userMsg);
+      const currentImage = selectedImage;
+      setSelectedImage(null); // Clear image after sending
       setActiveTab('coach');
 
       let stravaContext = "";
@@ -1118,7 +1131,7 @@ export default function App() {
           const response = await fetch(`/api/strava/activities?uid=${user.uid}`);
           if (response.ok) {
             const activities = await response.json();
-            stravaContext = "\n\nDonnées Strava récentes :\n" + activities.map((a: any) => 
+            stravaContext = "\n\nDonnées Strava récentes :\n" + activities.slice(0, 5).map((a: any) => 
               `- ${a.type} : ${Math.round(a.distance / 1000 * 10) / 10}km en ${Math.round(a.moving_time / 60)}min (${a.start_date_local})`
             ).join('\n');
           }
@@ -1130,7 +1143,14 @@ export default function App() {
       const prContext = profile.prs ? `\n\nRecords Personnels (PRs) : VMA: ${profile.prs.vma}km/h, FTP: ${profile.prs.ftp}W, CSS: ${profile.prs.css}, FC Max: ${profile.prs.maxHr}` : "";
       const genderContext = `\n\nL'athlète est un(e) ${profile.gender === 'Woman' ? 'Femme' : 'Homme'}.`;
 
-      const { text, functionCalls } = await getCoachAdvice(content + stravaContext + prContext + genderContext, chatHistory, profile, workouts, stravaActivities);
+      const { text, functionCalls } = await getCoachAdvice(
+        content + stravaContext + prContext + genderContext, 
+        chatHistory, 
+        profile, 
+        workouts, 
+        stravaActivities,
+        currentImage || undefined
+      );
       
       if (functionCalls) {
         for (const call of functionCalls) {
@@ -2252,6 +2272,14 @@ export default function App() {
                         <ReactMarkdown>
                           {msg.content}
                         </ReactMarkdown>
+                        {msg.image && (
+                          <img 
+                            src={msg.image} 
+                            alt="Attached" 
+                            className="mt-2 rounded-lg max-w-full h-auto border border-white/20 shadow-sm" 
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
                       </div>
                       {msg.role === 'model' && (
                         <button 
@@ -2277,49 +2305,77 @@ export default function App() {
               </div>
 
               {/* Chat Input */}
-              <div className="p-3 border-t border-slate-100">
+              <div className="p-3 border-t border-slate-100 bg-white">
                 <form 
                   onSubmit={(e) => {
                     e.preventDefault();
-                    const input = (e.target as any).message;
-                    handleSendMessage(input.value);
-                    input.value = '';
+                    handleSendMessage(messageInput);
+                    setMessageInput('');
                   }}
-                  className="flex gap-2"
+                  className="flex gap-2 items-end"
                 >
+                  <div className="flex-1 flex flex-col gap-2">
+                    {selectedImage && (
+                      <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200 shadow-sm group">
+                        <img src={selectedImage} alt="Preview" className="w-full h-full object-cover" />
+                        <button 
+                          type="button"
+                          onClick={() => setSelectedImage(null)}
+                          className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
+                    <input 
+                      name="message"
+                      autoComplete="off"
+                      placeholder="Message au coach..."
+                      value={messageInput}
+                      onChange={(e) => setMessageInput(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all shadow-inner"
+                    />
+                  </div>
+                  
                   <input 
-                    name="message"
-                    placeholder="Message au coach..."
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-orange-500 outline-none transition-all"
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    ref={fileInputRef}
+                    onChange={handleImageUpload}
                   />
-                  <button 
-                    type="button"
-                    onClick={() => saveProfile({...profile, voiceEnabled: !profile.voiceEnabled})}
-                    className={cn(
-                      "w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm",
-                      profile.voiceEnabled ? "bg-orange-50 text-orange-600 border border-orange-200" : "bg-slate-100 text-slate-400 border border-slate-200"
-                    )}
-                    title={profile.voiceEnabled ? "Désactiver la voix du coach" : "Activer la voix du coach"}
-                  >
-                    {profile.voiceEnabled ? <Volume2 size={16} /> : <MicOff size={16} />}
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={toggleRecording}
-                    className={cn(
-                      "w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm",
-                      isRecording ? "bg-red-500 text-white animate-pulse" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    )}
-                  >
-                    {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={isLoading}
-                    className="bg-orange-600 text-white w-10 h-10 rounded-lg flex items-center justify-center hover:bg-orange-700 transition-all shadow-sm disabled:opacity-50"
-                  >
-                    <Send size={16} />
-                  </button>
+                  
+                  <div className="flex gap-1.5">
+                    <button 
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-11 h-11 rounded-xl flex items-center justify-center bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all border border-slate-200"
+                      title="Ajouter une image"
+                    >
+                      <Camera size={18} />
+                    </button>
+                    
+                    <button 
+                      type="button"
+                      onClick={toggleRecording}
+                      className={cn(
+                        "w-11 h-11 rounded-xl flex items-center justify-center transition-all border",
+                        isRecording 
+                          ? "bg-red-500 text-white border-red-600 animate-pulse shadow-lg shadow-red-500/20" 
+                          : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                      )}
+                    >
+                      {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
+                    </button>
+                    
+                    <button 
+                      type="submit"
+                      disabled={isLoading}
+                      className="bg-orange-600 text-white w-11 h-11 rounded-xl flex items-center justify-center hover:bg-orange-700 transition-all shadow-lg shadow-orange-600/20 disabled:opacity-50 disabled:shadow-none"
+                    >
+                      {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                    </button>
+                  </div>
                 </form>
               </div>
             </motion.div>

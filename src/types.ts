@@ -65,4 +65,5 @@ export interface ChatMessage {
   role: 'user' | 'model';
   content: string;
   timestamp: number;
+  image?: string;
 }

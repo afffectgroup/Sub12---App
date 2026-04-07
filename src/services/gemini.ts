@@ -145,7 +145,14 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
   }
 }
 
-export async function getCoachAdvice(message: string, history: { role: 'user' | 'model', content: string }[], profile: AthleteProfile, currentPlan: Workout[], lastActivities: any[]) {
+export async function getCoachAdvice(
+  message: string, 
+  history: { role: 'user' | 'model', content: string }[], 
+  profile: AthleteProfile, 
+  currentPlan: Workout[], 
+  lastActivities: any[],
+  image?: string
+) {
   if (!apiKey) {
     console.error("GEMINI_API_KEY is missing. Please set it in the environment.");
     return { text: "Désolé, je ne peux pas répondre pour le moment car ma clé API est manquante. Vérifie la configuration dans les paramètres." };
@@ -162,18 +169,19 @@ export async function getCoachAdvice(message: string, history: { role: 'user' | 
     Objectif principal: ${profile.targetRace} (${profile.raceDate}).
     Profil: ${profile.fitnessLevel}, Métier: ${profile.profession}.
     
-    CONTEXTE ACTUEL:
+    CONTEXTE ATHLÈTE:
     PLANNING DES 7 PROCHAINS JOURS:
     ${planContext}
     
     DERNIÈRES ACTIVITÉS STRAVA:
     ${activityContext}
     
-    TON ADN:
+    TON ADN & RÈGLES DE RÉPONSE:
     1. CONCISION ABSOLUE: Tes réponses doivent être ultra-courtes (max 40-50 mots). Pas de blabla, pas de politesses.
     2. MOTIVATION: Sois inspirant, exigeant mais bienveillant.
     3. EXPERTISE: Utilise le vocabulaire technique (TSS, FTP, Z2) seulement si nécessaire.
-    4. ADAPTATION: Si l'athlète parle de fatigue ou manque de temps, propose d'adapter le plan via updateWorkouts.
+    4. ANALYSE D'IMAGE: Si l'athlète t'envoie une capture d'écran (séance, graphique, erreur), analyse-la précisément pour donner un conseil actionnable.
+    5. ADAPTATION: Si l'athlète parle de fatigue ou manque de temps, propose d'adapter le plan via l'outil updateWorkouts.
     
     RÈGLES D'OR:
     - Ne dépasse jamais 1-2 paragraphes très courts.
@@ -186,11 +194,24 @@ export async function getCoachAdvice(message: string, history: { role: 'user' | 
 
   while (retryCount < maxRetries) {
     try {
+      const userParts: any[] = [{ text: message }];
+      
+      if (image) {
+        const base64Data = image.split(',')[1];
+        const mimeType = image.split(',')[0].split(':')[1].split(';')[0];
+        userParts.push({
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType
+          }
+        });
+      }
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [
           ...history.map(h => ({ role: h.role, parts: [{ text: h.content }] })),
-          { role: 'user', parts: [{ text: message }] }
+          { role: 'user', parts: userParts }
         ],
         config: {
           systemInstruction,
