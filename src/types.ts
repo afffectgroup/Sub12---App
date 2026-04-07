@@ -38,6 +38,17 @@ export interface AthleteProfile {
   profession?: string;
   secondaryRaces?: SecondaryRace[];
   avatarUrl?: string;
+  coachGender?: 'Man' | 'Woman';
+  coachName?: string;
+  voiceEnabled?: boolean;
+  gender?: 'Man' | 'Woman';
+  prs?: {
+    vma?: number; // km/h
+    ftp?: number; // Watts
+    css?: string; // min/100m (e.g., "1:45")
+    maxHr?: number;
+    restHr?: number;
+  };
   stravaConnected?: boolean;
   stravaId?: number;
   strava?: {

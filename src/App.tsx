@@ -33,6 +33,7 @@ import {
   LogOut,
   LogIn,
   AlertCircle,
+  Info,
   Mic,
   MicOff,
   Volume2
@@ -168,12 +169,13 @@ const SportIcon = ({ sport, className, size = 20 }: { sport: Sport; className?: 
 
 const RaceLogo = ({ name, className = "w-10 h-10" }: { name: string, className?: string }) => {
   const lowerName = name.toLowerCase();
-  let src = `https://picsum.photos/seed/${encodeURIComponent(name)}/100/100`;
+  let src = "https://images.unsplash.com/photo-1526676023601-d02f1c1b8b70?w=100&h=100&fit=crop"; // Better default
   
-  if (lowerName.includes('paris')) {
-    src = "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=100&h=100&fit=crop"; // Eiffel Tower
-  } else if (lowerName.includes('ironman') || lowerName.includes('iron man')) {
-    src = "https://images.unsplash.com/photo-1530549387634-e797ca999656?w=100&h=100&fit=crop"; // Triathlon
+  if (lowerName.includes('triathlon l/xxl') || lowerName.includes('ironman')) {
+    src = "https://images.unsplash.com/photo-1530549387631-f535c7634c3c?w=100&h=100&fit=crop"; // Full distance
+  } else if (lowerName.includes('triathlon')) {
+    src = "https://images.unsplash.com/photo-1530549387634-e797ca999656?w=100&h=100&fit=crop"; // Sprint/Olympic
+  } else if (lowerName.includes('paris')) {
   } else if (lowerName.includes('hambourg') || lowerName.includes('hamburg')) {
     src = "https://images.unsplash.com/photo-1555992336-03a23c7b20ee?w=100&h=100&fit=crop"; // Hamburg
   } else if (lowerName.includes('marathon')) {
@@ -197,41 +199,31 @@ const RaceLogo = ({ name, className = "w-10 h-10" }: { name: string, className?:
   );
 };
 
+const SportImage = ({ sport, className }: { sport: Sport; className?: string }) => {
+  const keywords: Record<Sport, string> = {
+    'Swim': 'swimming-pool-athlete',
+    'Bike': 'cycling-road-bike-race',
+    'Run': 'running-athlete-track-marathon',
+    'Strength': 'gym-workout-weights',
+    'Rest': 'recovery-massage-sleep'
+  };
+  const seed = `${sport}-pro-athlete-sub12`;
+  return (
+    <img 
+      src={`https://picsum.photos/seed/${encodeURIComponent(seed)}/400/300`} 
+      alt={sport} 
+      className={cn("w-full h-full object-cover", className)}
+      referrerPolicy="no-referrer"
+    />
+  );
+};
+
 const Logo = ({ className = "w-10 h-10", iconOnly = false }: { className?: string, iconOnly?: boolean }) => (
   <div className={cn("flex items-center gap-3", className)}>
-    <div className="relative w-full h-full flex items-center justify-center">
-      <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#fb923c" />
-            <stop offset="100%" stopColor="#ea580c" />
-          </linearGradient>
-          <filter id="speed-blur" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="1" />
-          </filter>
-        </defs>
-        {/* Speed lines */}
-        <path d="M5 35 L25 35 M0 50 L20 50 M5 65 L25 65" stroke="url(#logo-gradient)" strokeWidth="4" strokeLinecap="round" opacity="0.6" filter="url(#speed-blur)" />
-        {/* Stylized Speedy S */}
-        <path 
-          d="M85 20 L40 20 C25 20 20 35 35 45 L65 55 C80 65 75 80 60 80 L15 80" 
-          stroke="url(#logo-gradient)" 
-          strokeWidth="14" 
-          strokeLinecap="round" 
-          strokeLinejoin="round"
-          className="drop-shadow-lg"
-        />
-        <path 
-          d="M85 20 L40 20 C25 20 20 35 35 45 L65 55 C80 65 75 80 60 80 L15 80" 
-          stroke="white" 
-          strokeWidth="2" 
-          strokeLinecap="round" 
-          strokeLinejoin="round"
-          opacity="0.3"
-        />
-      </svg>
+    <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-orange-600/20 flex-shrink-0">
+      <Activity size={24} strokeWidth={2.5} />
     </div>
-    {!iconOnly && <span className="text-3xl font-black italic tracking-tighter text-slate-900 uppercase">Sub12</span>}
+    {!iconOnly && <span className="text-2xl font-black tracking-tight text-slate-900">Sub12</span>}
   </div>
 );
 
@@ -392,7 +384,18 @@ export default function App() {
     age: 30,
     profession: '',
     secondaryRaces: [],
-    avatarUrl: ''
+    avatarUrl: '',
+    coachGender: 'Man',
+    coachName: 'Coach Sub12',
+    voiceEnabled: true,
+    gender: 'Man',
+    prs: {
+      vma: 15,
+      ftp: 200,
+      css: '1:50',
+      maxHr: 190,
+      restHr: 50
+    }
   });
 
   const [onboardingStep, setOnboardingStep] = useState(0);
@@ -400,6 +403,11 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [editingProfile, setEditingProfile] = useState<AthleteProfile | null>(null);
+
+  const [stravaFilter, setStravaFilter] = useState<{
+    period: 'week' | 'month' | 'year' | 'all';
+    type: string;
+  }>({ period: 'month', type: 'all' });
 
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -421,6 +429,11 @@ export default function App() {
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = 'fr-FR';
 
+      recognitionRef.current.onstart = () => {
+        console.log("Speech recognition started");
+        setIsRecording(true);
+      };
+
       recognitionRef.current.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         console.log("Speech recognized:", transcript);
@@ -430,14 +443,25 @@ export default function App() {
 
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
         if (event.error === 'not-allowed') {
           showToast("Accès au micro refusé. Vérifie les paramètres de ton navigateur.", "error");
+        } else if (event.error === 'no-speech') {
+          showToast("Aucune voix détectée. Réessaie.", "error");
+        } else {
+          showToast(`Erreur micro: ${event.error}`, "error");
         }
-        setIsRecording(false);
       };
 
       recognitionRef.current.onend = () => {
+        console.log("Speech recognition ended");
         setIsRecording(false);
+      };
+
+      return () => {
+        if (recognitionRef.current) {
+          recognitionRef.current.abort();
+        }
       };
     }
   }, []);
@@ -488,7 +512,9 @@ export default function App() {
     setIsSpeaking(false);
   };
 
-  const playCoachResponse = async (text: string) => {
+  const playCoachResponse = async (text: string, force: boolean = false) => {
+    if (!profile.voiceEnabled && !force) return;
+    
     if (isSpeaking) {
       stopSpeaking();
       return;
@@ -498,7 +524,7 @@ export default function App() {
       const ctx = initAudioContext();
       setIsSpeaking(true);
       
-      const base64Audio = await generateSpeech(text);
+      const base64Audio = await generateSpeech(text, profile.coachGender);
       if (base64Audio) {
         const binaryString = window.atob(base64Audio);
         const len = binaryString.length;
@@ -615,6 +641,8 @@ export default function App() {
     }
   };
 
+  const [trainingDataView, setTrainingDataView] = useState<'week' | 'month'>('week');
+
   const getWeeklyTrainingData = () => {
     const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
     const startOfThisWeek = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -646,7 +674,40 @@ export default function App() {
     });
   };
 
+  const getMonthlyTrainingData = () => {
+    const months = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const date = addDays(now, -i * 30);
+      const monthLabel = format(date, 'MMM', { locale: fr });
+      const monthStart = startOfDay(addDays(now, -i * 30 - 30));
+      const monthEnd = startOfDay(addDays(now, -i * 30));
+      
+      const monthActivities = stravaActivities.filter(a => {
+        const d = parseISO(a.start_date);
+        return d >= monthStart && d <= monthEnd;
+      });
+      const realDuration = monthActivities.reduce((acc, curr) => acc + curr.moving_time, 0) / 60;
+      
+      const monthWorkouts = workouts.filter(w => {
+        const d = parseISO(w.date);
+        return d >= monthStart && d <= monthEnd;
+      });
+      const plannedDuration = monthWorkouts.reduce((acc, curr) => acc + curr.durationMinutes, 0);
+
+      months.push({
+        day: monthLabel,
+        real: Math.round(realDuration / 60), // Hours for monthly
+        planned: Math.round(plannedDuration / 60),
+        fullDay: format(date, 'MMMM yyyy', { locale: fr })
+      });
+    }
+    return months;
+  };
+
   const weeklyData = getWeeklyTrainingData();
+  const monthlyData = getMonthlyTrainingData();
+  const trainingData = trainingDataView === 'week' ? weeklyData : monthlyData;
 
   // Strava Activities Sync
   useEffect(() => {
@@ -668,7 +729,7 @@ export default function App() {
       if (insightSnap.exists()) {
         setCoachInsight(insightSnap.data().text);
       } else {
-        const text = await generateDailyCoachInsight(profile, lastActivity, todayWorkout);
+        const text = await generateDailyCoachInsight(profile, lastActivity, todayWorkout, workouts);
         setCoachInsight(text);
         // Cache it
         await setDoc(insightRef, { text, timestamp: Date.now() });
@@ -696,8 +757,21 @@ export default function App() {
     const unsubscribe = onSnapshot(profileRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as AthleteProfile;
-        setProfile(data);
-        if (!editingProfile) setEditingProfile(data);
+        // Ensure PRs and gender are initialized if missing from old profiles
+        const updatedData = {
+          ...data,
+          gender: data.gender || 'Man',
+          coachName: data.coachName || 'Coach Sub12',
+          prs: data.prs || {
+            vma: 15,
+            ftp: 200,
+            css: '1:50',
+            maxHr: 190,
+            restHr: 50
+          }
+        };
+        setProfile(updatedData);
+        if (!editingProfile) setEditingProfile(updatedData);
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, `users/${user.uid}`));
     return () => unsubscribe();
@@ -841,6 +915,16 @@ export default function App() {
         profession: '',
         secondaryRaces: [],
         avatarUrl: '',
+        coachGender: 'Man',
+        voiceEnabled: true,
+        gender: 'Man',
+        prs: {
+          vma: 15,
+          ftp: 200,
+          css: '1:50',
+          maxHr: 190,
+          restHr: 50
+        },
         stravaConnected: false
       });
       setWorkouts([]);
@@ -1025,7 +1109,10 @@ export default function App() {
         }
       }
 
-      const { text, functionCalls } = await getCoachAdvice(content + stravaContext, chatHistory, profile);
+      const prContext = profile.prs ? `\n\nRecords Personnels (PRs) : VMA: ${profile.prs.vma}km/h, FTP: ${profile.prs.ftp}W, CSS: ${profile.prs.css}, FC Max: ${profile.prs.maxHr}` : "";
+      const genderContext = `\n\nL'athlète est un(e) ${profile.gender === 'Woman' ? 'Femme' : 'Homme'}.`;
+
+      const { text, functionCalls } = await getCoachAdvice(content + stravaContext + prContext + genderContext, chatHistory, profile, workouts, stravaActivities);
       
       if (functionCalls) {
         for (const call of functionCalls) {
@@ -1194,12 +1281,55 @@ export default function App() {
 
           {onboardingStep === 2 && (
             <div className="space-y-6">
+              <h2 className="text-2xl font-bold text-center tracking-tight">Ton Coach Sub12</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="mono-label text-slate-400 block mb-2">Genre du Coach</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={() => saveProfile({...profile, coachGender: 'Man'})}
+                      className={cn("p-3 rounded-lg border text-sm font-bold transition-all", profile.coachGender === 'Man' ? "bg-orange-600 text-white border-orange-600" : "bg-slate-50 text-slate-600 border-slate-200")}
+                    >
+                      Homme
+                    </button>
+                    <button 
+                      onClick={() => saveProfile({...profile, coachGender: 'Woman'})}
+                      className={cn("p-3 rounded-lg border text-sm font-bold transition-all", profile.coachGender === 'Woman' ? "bg-orange-600 text-white border-orange-600" : "bg-slate-50 text-slate-600 border-slate-200")}
+                    >
+                      Femme
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+                  <div>
+                    <p className="font-bold text-sm">Synthèse Vocale</p>
+                    <p className="text-[10px] text-slate-500">Le coach te parle après ses réponses.</p>
+                  </div>
+                  <button 
+                    onClick={() => saveProfile({...profile, voiceEnabled: !profile.voiceEnabled})}
+                    className={cn("w-12 h-6 rounded-full transition-all relative", profile.voiceEnabled ? "bg-orange-600" : "bg-slate-300")}
+                  >
+                    <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full transition-all", profile.voiceEnabled ? "right-1" : "left-1")} />
+                  </button>
+                </div>
+              </div>
+              <button 
+                onClick={() => setOnboardingStep(3)}
+                className="w-full bg-orange-600 text-white py-3 rounded-lg font-bold text-base hover:bg-orange-700 transition-all shadow-sm"
+              >
+                Suivant
+              </button>
+            </div>
+          )}
+
+          {onboardingStep === 3 && (
+            <div className="space-y-6">
               <h2 className="text-2xl font-bold text-center tracking-tight">Mode de Coaching ?</h2>
               <div className="grid grid-cols-1 gap-3">
                 <button 
                   onClick={() => {
                     saveProfile({...profile, goalMode: 'Finisher'});
-                    setOnboardingStep(3);
+                    setOnboardingStep(4);
                   }}
                   className="p-4 bg-slate-50 rounded-lg text-left hover:bg-orange-50 transition-all border border-slate-200 hover:border-orange-200"
                 >
@@ -1212,7 +1342,7 @@ export default function App() {
                 <button 
                   onClick={() => {
                     saveProfile({...profile, goalMode: 'Chrono'});
-                    setOnboardingStep(3);
+                    setOnboardingStep(4);
                   }}
                   className="p-4 bg-slate-50 rounded-lg text-left hover:bg-orange-50 transition-all border border-slate-200 hover:border-orange-200"
                 >
@@ -1226,10 +1356,27 @@ export default function App() {
             </div>
           )}
 
-          {onboardingStep === 3 && (
+          {onboardingStep === 4 && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold text-center tracking-tight">Profil Physique</h2>
               <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="mono-label text-slate-400 block mb-2">Ton Genre</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={() => saveProfile({...profile, gender: 'Man'})}
+                      className={cn("p-3 rounded-lg border text-sm font-bold transition-all", profile.gender === 'Man' ? "bg-orange-600 text-white border-orange-600" : "bg-slate-50 text-slate-600 border-slate-200")}
+                    >
+                      Homme
+                    </button>
+                    <button 
+                      onClick={() => saveProfile({...profile, gender: 'Woman'})}
+                      className={cn("p-3 rounded-lg border text-sm font-bold transition-all", profile.gender === 'Woman' ? "bg-orange-600 text-white border-orange-600" : "bg-slate-50 text-slate-600 border-slate-200")}
+                    >
+                      Femme
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="mono-label text-slate-400 block mb-1">Âge</label>
@@ -1272,7 +1419,7 @@ export default function App() {
                 </div>
               </div>
               <button 
-                onClick={() => setOnboardingStep(4)}
+                onClick={() => setOnboardingStep(5)}
                 className="w-full bg-orange-600 text-white py-3 rounded-lg font-bold text-base hover:bg-orange-700 transition-all shadow-sm"
               >
                 Suivant
@@ -1280,7 +1427,7 @@ export default function App() {
             </div>
           )}
 
-          {onboardingStep === 4 && (
+          {onboardingStep === 5 && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold text-center tracking-tight">C'est parti !</h2>
               <p className="text-slate-500 text-center text-sm">Sub12 prépare ton plan adaptatif...</p>
@@ -1341,12 +1488,9 @@ export default function App() {
                   <MessageSquare size={80} className="text-orange-500" />
                 </div>
                 <div className="flex gap-5 items-start relative z-10">
-                  <div className="w-14 h-14 bg-orange-500 rounded-2xl flex-shrink-0 flex items-center justify-center shadow-lg shadow-orange-500/20">
-                    <Logo iconOnly className="w-10 h-10" />
-                  </div>
                   <div className="space-y-2 flex-1">
                     <div className="flex justify-between items-center">
-                      <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-500">Coach Sub12 Insight</h4>
+                      <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-500">{profile.coachName || "Coach Sub12"} Insight</h4>
                       <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">Live Analysis</span>
                     </div>
                     <p className="text-sm font-medium leading-relaxed text-slate-200 italic">
@@ -1452,24 +1596,42 @@ export default function App() {
                     <TrendingUp size={10} /> +12%
                   </p>
                 </div>
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative group">
                   <div className="flex items-center gap-2 text-slate-500 mb-2">
-                    <Timer size={14} className="text-orange-500" />
+                    <Timer size={14} className={cn(metrics.atl > 80 ? "text-red-500" : metrics.atl > 50 ? "text-orange-500" : "text-green-500")} />
                     <span className="mono-label">Fatigue (ATL)</span>
+                    <div className="relative group/info">
+                      <Info size={10} className="text-slate-300 cursor-help" />
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-900 text-white text-[8px] rounded-lg opacity-0 group-hover/info:opacity-100 transition-opacity pointer-events-none z-50 leading-tight">
+                        L'ATL (Acute Training Load) représente ta fatigue accumulée sur les 7 derniers jours.
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-2xl font-bold font-mono">{metrics.atl}</p>
-                  <p className="text-[10px] text-slate-400 font-bold">Volume: 8.5h</p>
+                  <p className={cn(
+                    "text-2xl font-bold font-mono",
+                    metrics.atl > 80 ? "text-red-600" : metrics.atl > 50 ? "text-orange-600" : "text-green-600"
+                  )}>{metrics.atl}</p>
+                  <p className="text-[10px] text-slate-400 font-bold">Volume Hebdo: {(weeklyData.reduce((acc, d) => acc + d.real, 0) / 60).toFixed(1)}h</p>
                 </div>
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative group">
                   <div className="flex items-center gap-2 text-slate-500 mb-2">
-                    <Zap size={14} className="text-orange-500" />
+                    <Zap size={14} className={cn(metrics.tsb < -30 ? "text-red-500" : metrics.tsb < -10 ? "text-orange-500" : "text-green-500")} />
                     <span className="mono-label">Forme (TSB)</span>
+                    <div className="relative group/info">
+                      <Info size={10} className="text-slate-300 cursor-help" />
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-900 text-white text-[8px] rounded-lg opacity-0 group-hover/info:opacity-100 transition-opacity pointer-events-none z-50 leading-tight">
+                        Le TSB (Training Stress Balance) mesure ta fraîcheur. 
+                        Un score négatif indique une fatigue accumulée. 
+                        Calculé par la différence entre ta charge long terme (CTL) et court terme (ATL).
+                      </div>
+                    </div>
                   </div>
-                  <p className={cn("text-2xl font-bold font-mono", metrics.tsb < -10 ? "text-red-500" : metrics.tsb > 5 ? "text-green-500" : "text-orange-500")}>
-                    {metrics.tsb}
-                  </p>
+                  <p className={cn(
+                    "text-2xl font-bold font-mono",
+                    metrics.tsb < -30 ? "text-red-600" : metrics.tsb < -10 ? "text-orange-600" : "text-green-600"
+                  )}>{metrics.tsb}</p>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
-                    {metrics.tsb < -10 ? "Fatigué" : metrics.tsb > 5 ? "Frais" : "Optimal"}
+                    {metrics.tsb < -30 ? "Risque" : metrics.tsb < -10 ? "Fatigué" : "Optimal"}
                   </p>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -1482,114 +1644,167 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Strava Stats Section */}
+              {/* Strava Dashboard Section */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between px-1">
                   <h3 className="font-black text-[11px] uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
                     <Activity size={14} className="text-orange-500" />
-                    Strava Performance
+                    Tableau de Bord Strava
                   </h3>
-                  {profile.stravaConnected && (
-                    <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">Live Sync</span>
-                  )}
+                  <div className="flex gap-2">
+                    <select 
+                      value={stravaFilter.period}
+                      onChange={e => setStravaFilter({...stravaFilter, period: e.target.value as any})}
+                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold outline-none focus:ring-1 focus:ring-orange-500"
+                    >
+                      <option value="week">Semaine</option>
+                      <option value="month">Mois</option>
+                      <option value="year">Année</option>
+                      <option value="all">Tout</option>
+                    </select>
+                    <select 
+                      value={stravaFilter.type}
+                      onChange={e => setStravaFilter({...stravaFilter, type: e.target.value})}
+                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold outline-none focus:ring-1 focus:ring-orange-500"
+                    >
+                      <option value="all">Tous sports</option>
+                      <option value="Run">Course</option>
+                      <option value="Ride">Vélo</option>
+                      <option value="Swim">Natation</option>
+                      <option value="Walk">Marche</option>
+                      <option value="Hike">Rando</option>
+                      <option value="WeightTraining">Renfo</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {/* Last Activity */}
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm md:col-span-2">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <p className="mono-label text-slate-400 text-[9px] uppercase tracking-widest mb-1">Dernière activité</p>
-                        <h4 className="font-bold text-slate-900">
-                          {stravaActivities[0]?.name || "Aucune activité"}
-                        </h4>
+                  {/* PRs Summary */}
+                  <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl text-white">
+                    <p className="mono-label text-slate-500 text-[9px] uppercase tracking-widest mb-4">Mes Records (PRs)</p>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Footprints size={14} className="text-orange-500" />
+                          <span className="text-[10px] font-bold">VMA</span>
+                        </div>
+                        <span className="text-sm font-black font-mono">{profile.prs?.vma || '--'} km/h</span>
                       </div>
-                      <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
-                        {stravaActivities[0]?.type === 'Run' && <Footprints size={20} className="text-orange-500" />}
-                        {stravaActivities[0]?.type === 'Ride' && <Bike size={20} className="text-orange-500" />}
-                        {stravaActivities[0]?.type === 'Swim' && <Waves size={20} className="text-orange-500" />}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Bike size={14} className="text-orange-500" />
+                          <span className="text-[10px] font-bold">FTP</span>
+                        </div>
+                        <span className="text-sm font-black font-mono">{profile.prs?.ftp || '--'} W</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Waves size={14} className="text-orange-500" />
+                          <span className="text-[10px] font-bold">CSS</span>
+                        </div>
+                        <span className="text-sm font-black font-mono">{profile.prs?.css || '--'}</span>
                       </div>
                     </div>
-                    {stravaActivities[0] && (
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <p className="text-[9px] mono-label text-slate-400 uppercase">Distance</p>
-                          <p className="text-sm font-black font-mono">{(stravaActivities[0].distance / 1000).toFixed(1)}km</p>
-                        </div>
-                        <div>
-                          <p className="text-[9px] mono-label text-slate-400 uppercase">Dénivelé</p>
-                          <p className="text-sm font-black font-mono">{stravaActivities[0].total_elevation_gain}m</p>
-                        </div>
-                        <div>
-                          <p className="text-[9px] mono-label text-slate-400 uppercase">Durée</p>
-                          <p className="text-sm font-black font-mono">{Math.floor(stravaActivities[0].moving_time / 60)}min</p>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Weekly Mileage */}
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                    <p className="mono-label text-slate-400 text-[9px] uppercase tracking-widest mb-4">Volume 7j</p>
-                    <div className="space-y-3">
-                      {(() => {
-                        const last7Days = addDays(new Date(), -7);
-                        const weekly = stravaActivities.filter(a => parseISO(a.start_date) > last7Days);
-                        const runKm = weekly.filter(a => a.type === 'Run').reduce((acc, a) => acc + a.distance, 0) / 1000;
-                        const bikeKm = weekly.filter(a => a.type === 'Ride').reduce((acc, a) => acc + a.distance, 0) / 1000;
-                        const swimM = weekly.filter(a => a.type === 'Swim').reduce((acc, a) => acc + a.distance, 0);
-                        
-                        return (
-                          <>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Footprints size={14} className="text-slate-400" />
-                                <span className="text-[10px] font-bold text-slate-600">Run</span>
-                              </div>
-                              <span className="text-[11px] font-black font-mono">{runKm.toFixed(1)}km</span>
+                  {/* Filtered Stats */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm md:col-span-2">
+                    {(() => {
+                      const filtered = stravaActivities.filter(a => {
+                        const date = parseISO(a.start_date);
+                        const now = new Date();
+                        if (stravaFilter.period === 'week' && differenceInDays(now, date) > 7) return false;
+                        if (stravaFilter.period === 'month' && differenceInDays(now, date) > 30) return false;
+                        if (stravaFilter.period === 'year' && differenceInDays(now, date) > 365) return false;
+                        if (stravaFilter.type !== 'all' && a.type !== stravaFilter.type) return false;
+                        return true;
+                      });
+                      
+                      const totalDist = filtered.reduce((acc, a) => acc + a.distance, 0) / 1000;
+                      const totalElev = filtered.reduce((acc, a) => acc + a.total_elevation_gain, 0);
+                      const totalTime = filtered.reduce((acc, a) => acc + a.moving_time, 0) / 3600;
+
+                      return (
+                        <div className="space-y-6">
+                          <div className="grid grid-cols-3 gap-4">
+                            <div>
+                              <p className="text-[9px] mono-label text-slate-400 uppercase">Distance Totale</p>
+                              <p className="text-lg font-black font-mono text-orange-600">{totalDist.toFixed(1)}km</p>
                             </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Bike size={14} className="text-slate-400" />
-                                <span className="text-[10px] font-bold text-slate-600">Bike</span>
-                              </div>
-                              <span className="text-[11px] font-black font-mono">{bikeKm.toFixed(1)}km</span>
+                            <div>
+                              <p className="text-[9px] mono-label text-slate-400 uppercase">Dénivelé</p>
+                              <p className="text-lg font-black font-mono text-slate-900">{totalElev.toLocaleString()}m</p>
                             </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Waves size={14} className="text-slate-400" />
-                                <span className="text-[10px] font-bold text-slate-600">Swim</span>
-                              </div>
-                              <span className="text-[11px] font-black font-mono">{swimM.toFixed(0)}m</span>
+                            <div>
+                              <p className="text-[9px] mono-label text-slate-400 uppercase">Temps Total</p>
+                              <p className="text-lg font-black font-mono text-slate-900">{totalTime.toFixed(1)}h</p>
                             </div>
-                          </>
-                        );
-                      })()}
-                    </div>
+                          </div>
+                          
+                          <div className="space-y-2 max-h-[150px] overflow-y-auto pr-2 custom-scrollbar">
+                            {filtered.slice(0, 10).map((a, i) => (
+                              <div key={i} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-100 text-[10px]">
+                                <div className="flex items-center gap-2">
+                                  {a.type === 'Run' && <Footprints size={12} className="text-orange-500" />}
+                                  {a.type === 'Ride' && <Bike size={12} className="text-orange-500" />}
+                                  {a.type === 'Swim' && <Waves size={12} className="text-orange-500" />}
+                                  {a.type === 'Walk' && <Footprints size={12} className="text-green-500" />}
+                                  {a.type === 'Hike' && <TrendingUp size={12} className="text-green-600" />}
+                                  {a.type === 'WeightTraining' && <Dumbbell size={12} className="text-slate-500" />}
+                                  <span className="font-bold truncate max-w-[120px]">{a.name}</span>
+                                </div>
+                                <div className="flex gap-3 font-mono text-slate-500">
+                                  <span>{(a.distance / 1000).toFixed(1)}km</span>
+                                  <span>{format(parseISO(a.start_date), 'dd/MM/yy')}</span>
+                                </div>
+                              </div>
+                            ))}
+                            {filtered.length === 0 && (
+                              <p className="text-center text-slate-400 py-4 text-[10px]">Aucune activité trouvée.</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
+              </div>
 
                 {/* Training Load Graph */}
                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="font-bold text-sm flex items-center gap-2">
                       <TrendingUp size={16} className="text-orange-600" />
-                      <span className="mono-label">Volume Hebdomadaire (min)</span>
+                      <span className="mono-label">Volume {trainingDataView === 'week' ? 'Hebdomadaire (min)' : 'Mensuel (h)'}</span>
                     </h3>
                     <div className="flex items-center gap-3">
+                      <div className="flex bg-slate-100 p-0.5 rounded-lg mr-2">
+                        <button 
+                          onClick={() => setTrainingDataView('week')}
+                          className={cn("px-2 py-1 text-[8px] font-bold rounded-md transition-all", trainingDataView === 'week' ? "bg-white text-orange-600 shadow-sm" : "text-slate-400")}
+                        >
+                          Semaine
+                        </button>
+                        <button 
+                          onClick={() => setTrainingDataView('month')}
+                          className={cn("px-2 py-1 text-[8px] font-bold rounded-md transition-all", trainingDataView === 'month' ? "bg-white text-orange-600 shadow-sm" : "text-slate-400")}
+                        >
+                          Mois
+                        </button>
+                      </div>
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full bg-orange-500" />
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">Réel (Strava)</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">Réel</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full bg-slate-200" />
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">Prévu (Plan)</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">Prévu</span>
                       </div>
                     </div>
                   </div>
                   <div className="h-48 w-full min-h-[192px] min-w-0">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={weeklyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <BarChart data={trainingData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis 
                           dataKey="day" 
@@ -1602,17 +1817,16 @@ export default function App() {
                           cursor={{fill: '#f8fafc'}}
                           contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontFamily: 'JetBrains Mono', fontSize: '10px' }}
                           labelStyle={{ fontWeight: 800, color: '#ea580c' }}
-                          formatter={(value: any) => [`${value} min`, '']}
+                          formatter={(value: any) => [`${value} ${trainingDataView === 'week' ? 'min' : 'h'}`, '']}
                         />
-                        <Bar dataKey="planned" fill="#e2e8f0" radius={[4, 4, 0, 0]} barSize={20} />
-                        <Bar dataKey="real" fill="#ea580c" radius={[4, 4, 0, 0]} barSize={20} />
+                        <Bar dataKey="planned" fill="#e2e8f0" radius={[4, 4, 0, 0]} barSize={trainingDataView === 'week' ? 20 : 30} />
+                        <Bar dataKey="real" fill="#ea580c" radius={[4, 4, 0, 0]} barSize={trainingDataView === 'week' ? 20 : 30} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
-              </div>
 
-              {/* All Objectives Section */}
+                {/* All Objectives Section */}
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                 <h3 className="font-bold text-sm mb-4 flex items-center gap-2">
                   <Trophy size={16} className="text-orange-600" />
@@ -1732,7 +1946,7 @@ export default function App() {
                 </div>
               ) : planView === 'list' ? (
                 <div className="space-y-2">
-                      {workouts.map((workout, idx) => (
+                      {[...workouts].sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime()).map((workout, idx) => (
                         <motion.div 
                           key={workout.id}
                           initial={{ opacity: 0, y: 5 }}
@@ -1803,39 +2017,46 @@ export default function App() {
                       ))}
                     </div>
                     <div className="grid grid-cols-7 gap-1">
-                      {Array.from({ length: 7 }).map((_, i) => {
-                        const date = addDays(new Date(), i);
-                        const dayWorkouts = workouts.filter(w => isSameDay(parseISO(w.date), date));
-                        const isSelected = isSameDay(date, selectedDate);
-                        
-                        return (
-                          <button 
-                            key={i} 
-                            onClick={() => setSelectedDate(date)}
-                            className={cn(
-                              "aspect-square border rounded-md p-1 flex flex-col gap-1 overflow-hidden transition-all",
-                              isSelected ? "border-orange-500 bg-orange-50 ring-1 ring-orange-500" : "border-slate-100 hover:border-slate-200"
-                            )}
-                          >
-                            <span className={cn(
-                              "text-[8px] font-mono",
-                              isSelected ? "text-orange-600 font-bold" : "text-slate-300"
-                            )}>{format(date, 'd')}</span>
-                            <div className="flex flex-wrap gap-0.5">
-                              {dayWorkouts.map(w => (
-                                <div 
-                                  key={w.id} 
-                                  className={cn(
-                                    "w-1.5 h-1.5 rounded-full",
-                                    w.completed ? "bg-green-400" : "bg-orange-400"
-                                  )}
-                                  title={w.title}
-                                />
-                              ))}
-                            </div>
-                          </button>
-                        );
-                      })}
+                      {(() => {
+                        const startOfThisWeek = startOfWeek(new Date(), { weekStartsOn: 1 });
+                        return Array.from({ length: 14 }).map((_, i) => {
+                          const date = addDays(startOfThisWeek, i);
+                          const dayWorkouts = workouts.filter(w => isSameDay(parseISO(w.date), date));
+                          const isSelected = isSameDay(date, selectedDate);
+                          const isToday = isSameDay(date, new Date());
+                          
+                          return (
+                            <button 
+                              key={i} 
+                              onClick={() => setSelectedDate(date)}
+                              className={cn(
+                                "aspect-square border rounded-md p-1 flex flex-col gap-1 overflow-hidden transition-all relative",
+                                isSelected ? "border-orange-500 bg-orange-50 ring-1 ring-orange-500" : "border-slate-100 hover:border-slate-200",
+                                isToday && !isSelected && "border-orange-200 bg-orange-50/30"
+                              )}
+                            >
+                              <span className={cn(
+                                "text-[8px] font-mono",
+                                isSelected ? "text-orange-600 font-bold" : isToday ? "text-orange-500 font-bold" : "text-slate-300"
+                              )}>{format(date, 'd')}</span>
+                              <div className="flex flex-wrap gap-1 mt-auto">
+                                {dayWorkouts.map(w => (
+                                  <div key={w.id} className="relative group/icon">
+                                    <SportIcon 
+                                      sport={w.sport} 
+                                      size={14} 
+                                      className={cn(w.completed ? "text-green-500" : "text-orange-500")} 
+                                    />
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/icon:block bg-slate-900 text-white text-[6px] px-1 py-0.5 rounded whitespace-nowrap z-50">
+                                      {w.title}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </button>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
 
@@ -1946,7 +2167,7 @@ export default function App() {
                   <Activity size={20} strokeWidth={2.5} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-slate-900">Coach AI</h3>
+                  <h3 className="font-bold text-sm text-slate-900">{profile.coachName || "Coach AI"}</h3>
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
                     <span className="mono-label text-slate-400">Expert Performance</span>
@@ -1993,14 +2214,17 @@ export default function App() {
                         ? "bg-slate-900 text-white rounded-tr-none" 
                         : "bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200"
                     )}>
-                      <div className="prose prose-sm prose-slate max-w-none">
+                      <div className={cn(
+                        "prose prose-sm max-w-none",
+                        msg.role === 'user' ? "prose-invert" : "prose-slate"
+                      )}>
                         <ReactMarkdown>
                           {msg.content}
                         </ReactMarkdown>
                       </div>
                       {msg.role === 'model' && (
                         <button 
-                          onClick={() => playCoachResponse(msg.content)}
+                          onClick={() => playCoachResponse(msg.content, true)}
                           className="absolute -right-8 top-0 p-1.5 text-slate-300 hover:text-orange-600 transition-colors"
                           title="Écouter la réponse"
                         >
@@ -2037,6 +2261,17 @@ export default function App() {
                     placeholder="Message au coach..."
                     className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-orange-500 outline-none transition-all"
                   />
+                  <button 
+                    type="button"
+                    onClick={() => saveProfile({...profile, voiceEnabled: !profile.voiceEnabled})}
+                    className={cn(
+                      "w-10 h-10 rounded-lg flex items-center justify-center transition-all shadow-sm",
+                      profile.voiceEnabled ? "bg-orange-50 text-orange-600 border border-orange-200" : "bg-slate-100 text-slate-400 border border-slate-200"
+                    )}
+                    title={profile.voiceEnabled ? "Désactiver la voix du coach" : "Activer la voix du coach"}
+                  >
+                    {profile.voiceEnabled ? <Volume2 size={16} /> : <MicOff size={16} />}
+                  </button>
                   <button 
                     type="button"
                     onClick={toggleRecording}
@@ -2121,6 +2356,24 @@ export default function App() {
 
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
                   <h3 className="font-bold text-sm flex items-center gap-2">
+                    <Activity size={16} className="text-orange-600" />
+                    <span className="mono-label">Coach</span>
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mono-label text-[10px] text-slate-400 block mb-1">Nom de ton Coach</label>
+                      <input 
+                        value={editingProfile.coachName || ''}
+                        onChange={e => setEditingProfile({...editingProfile, coachName: e.target.value})}
+                        placeholder="Ex: Coach Sub12"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold focus:ring-1 focus:ring-orange-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                  <h3 className="font-bold text-sm flex items-center gap-2">
                     <Trophy size={16} className="text-orange-600" />
                     <span className="mono-label">Objectif Principal</span>
                   </h3>
@@ -2162,45 +2415,148 @@ export default function App() {
                     <User size={16} className="text-orange-600" />
                     <span className="mono-label">Profil Physique</span>
                   </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mono-label text-slate-400 block mb-2">Ton Genre</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button 
+                          onClick={() => saveProfile({...editingProfile, gender: 'Man'})}
+                          className={cn("p-2 rounded-lg border text-xs font-bold transition-all", editingProfile.gender === 'Man' ? "bg-orange-600 text-white border-orange-600" : "bg-slate-50 text-slate-600 border-slate-200")}
+                        >
+                          Homme
+                        </button>
+                        <button 
+                          onClick={() => saveProfile({...editingProfile, gender: 'Woman'})}
+                          className={cn("p-2 rounded-lg border text-xs font-bold transition-all", editingProfile.gender === 'Woman' ? "bg-orange-600 text-white border-orange-600" : "bg-slate-50 text-slate-600 border-slate-200")}
+                        >
+                          Femme
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mono-label text-slate-400 block mb-1">Âge</label>
+                        <input 
+                          type="number"
+                          value={editingProfile.age}
+                          onChange={e => saveProfile({...editingProfile, age: parseInt(e.target.value)})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mono-label text-slate-400 block mb-1">Poids (kg)</label>
+                        <input 
+                          type="number"
+                          value={editingProfile.weight}
+                          onChange={e => saveProfile({...editingProfile, weight: parseInt(e.target.value)})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mono-label text-slate-400 block mb-1">Taille (cm)</label>
+                        <input 
+                          type="number"
+                          value={editingProfile.height}
+                          onChange={e => saveProfile({...editingProfile, height: parseInt(e.target.value)})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mono-label text-slate-400 block mb-1">Profession</label>
+                        <input 
+                          value={editingProfile.profession}
+                          onChange={e => saveProfile({...editingProfile, profession: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                  <h3 className="font-bold text-sm flex items-center gap-2">
+                    <Zap size={16} className="text-orange-600" />
+                    <span className="mono-label">Records Personnels (PRs)</span>
+                  </h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mono-label text-slate-400 block mb-1">Âge</label>
+                      <label className="mono-label text-slate-400 block mb-1">VMA (km/h)</label>
                       <input 
                         type="number"
-                        value={editingProfile.age}
-                        onChange={e => saveProfile({...editingProfile, age: parseInt(e.target.value)})}
+                        step="0.1"
+                        value={editingProfile.prs?.vma}
+                        onChange={e => saveProfile({...editingProfile, prs: {...(editingProfile.prs || {}), vma: parseFloat(e.target.value)}})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
                     <div>
-                      <label className="mono-label text-slate-400 block mb-1">Poids (kg)</label>
+                      <label className="mono-label text-slate-400 block mb-1">FTP (Watts)</label>
                       <input 
                         type="number"
-                        value={editingProfile.weight}
-                        onChange={e => saveProfile({...editingProfile, weight: parseInt(e.target.value)})}
+                        value={editingProfile.prs?.ftp}
+                        onChange={e => saveProfile({...editingProfile, prs: {...(editingProfile.prs || {}), ftp: parseInt(e.target.value)}})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
                     <div>
-                      <label className="mono-label text-slate-400 block mb-1">Taille (cm)</label>
+                      <label className="mono-label text-slate-400 block mb-1">CSS (min/100m)</label>
                       <input 
-                        type="number"
-                        value={editingProfile.height}
-                        onChange={e => saveProfile({...editingProfile, height: parseInt(e.target.value)})}
+                        placeholder="1:45"
+                        value={editingProfile.prs?.css}
+                        onChange={e => saveProfile({...editingProfile, prs: {...(editingProfile.prs || {}), css: e.target.value}})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
                     <div>
-                      <label className="mono-label text-slate-400 block mb-1">Profession</label>
+                      <label className="mono-label text-slate-400 block mb-1">FC Max</label>
                       <input 
-                        value={editingProfile.profession}
-                        onChange={e => saveProfile({...editingProfile, profession: e.target.value})}
+                        type="number"
+                        value={editingProfile.prs?.maxHr}
+                        onChange={e => saveProfile({...editingProfile, prs: {...(editingProfile.prs || {}), maxHr: parseInt(e.target.value)}})}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
                   </div>
                 </div>
 
+
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                  <h3 className="font-bold text-sm flex items-center gap-2">
+                    <MessageSquare size={16} className="text-orange-600" />
+                    <span className="mono-label">Paramètres Coach</span>
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mono-label text-slate-400 block mb-2">Genre du Coach</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button 
+                          onClick={() => saveProfile({...editingProfile, coachGender: 'Man'})}
+                          className={cn("p-2 rounded-lg border text-xs font-bold transition-all", editingProfile.coachGender === 'Man' ? "bg-orange-600 text-white border-orange-600" : "bg-slate-50 text-slate-600 border-slate-200")}
+                        >
+                          Homme
+                        </button>
+                        <button 
+                          onClick={() => saveProfile({...editingProfile, coachGender: 'Woman'})}
+                          className={cn("p-2 rounded-lg border text-xs font-bold transition-all", editingProfile.coachGender === 'Woman' ? "bg-orange-600 text-white border-orange-600" : "bg-slate-50 text-slate-600 border-slate-200")}
+                        >
+                          Femme
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                      <div>
+                        <p className="font-bold text-xs">Synthèse Vocale</p>
+                        <p className="text-[9px] text-slate-500">Le coach parle après ses réponses.</p>
+                      </div>
+                      <button 
+                        onClick={() => saveProfile({...editingProfile, voiceEnabled: !editingProfile.voiceEnabled})}
+                        className={cn("w-10 h-5 rounded-full transition-all relative", editingProfile.voiceEnabled ? "bg-orange-600" : "bg-slate-300")}
+                      >
+                        <div className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all", editingProfile.voiceEnabled ? "right-0.5" : "left-0.5")} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
 
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
                   <h3 className="font-bold text-sm flex items-center gap-2">
@@ -2389,8 +2745,8 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 z-40">
-        <div className="bg-white/90 backdrop-blur-2xl border border-slate-200/50 px-8 py-3 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex justify-between items-center">
+      <nav className="fixed bottom-0 left-0 right-0 sm:bottom-6 sm:left-1/2 sm:-translate-x-1/2 w-full sm:max-w-4xl px-0 sm:px-4 z-40">
+        <div className="bg-white/90 backdrop-blur-2xl border-t sm:border border-slate-200/50 px-8 py-3 sm:rounded-3xl shadow-[0_-10px_30px_rgba(0,0,0,0.05)] sm:shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex justify-between items-center">
           <NavButton 
             active={activeTab === 'dashboard'} 
             onClick={() => setActiveTab('dashboard')} 

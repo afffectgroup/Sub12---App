@@ -39,20 +39,25 @@ const updateWorkoutsTool: FunctionDeclaration = {
   }
 };
 
-export async function generateDailyCoachInsight(profile: AthleteProfile, lastActivity: any, todayWorkout: Workout | undefined): Promise<string> {
+export async function generateDailyCoachInsight(profile: AthleteProfile, lastActivity: any, todayWorkout: Workout | undefined, currentPlan: Workout[]): Promise<string> {
+  const planContext = currentPlan.slice(0, 3).map(w => `${w.date}: ${w.title}`).join(', ');
+  const gender = profile.coachGender === 'Woman' ? "une coach femme" : "un coach homme";
+  const coachName = profile.coachName || "Coach Sub12";
+  
   const prompt = `
-    Tu es "Coach Sub12". Génère un message court (max 2-3 phrases) et percutant pour l'athlète ${profile.name}.
-    Données:
-    - Objectif: ${profile.targetRace} dans ${differenceInDays(parseISO(profile.raceDate), new Date())} jours.
-    - Dernière activité Strava: ${lastActivity ? `${lastActivity.name}, ${Math.round(lastActivity.distance / 1000)}km, ${lastActivity.total_elevation_gain}m D+` : "Aucune activité récente"}.
-    - Séance prévue aujourd'hui: ${todayWorkout ? `${todayWorkout.title} (${todayWorkout.sport}, ${todayWorkout.durationMinutes}min)` : "Repos"}.
+    Tu es "${coachName}", ${gender} d'élite. Génère un message TRÈS COURT (max 20-30 mots), percutant et ultra-motivant pour ${profile.name}.
     
-    Ton message doit:
-    1. Commenter brièvement la dernière activité (si présente).
-    2. Donner un conseil ou un encouragement pour la séance du jour.
-    3. Rester dans ton ADN: expert, direct, motivant, orienté efficience "Sub12".
+    Contexte:
+    - Objectif: ${profile.targetRace} (${differenceInDays(parseISO(profile.raceDate), new Date())}j).
+    - Dernière activité Strava: ${lastActivity ? `${lastActivity.name}, ${Math.round(lastActivity.distance / 1000)}km, ${lastActivity.total_elevation_gain}m D+` : "Aucune"}.
+    - Séance aujourd'hui: ${todayWorkout ? `${todayWorkout.title} (${todayWorkout.durationMinutes}min)` : "Repos"}.
+    - Prochaines séances: ${planContext}.
     
-    Ne commence pas par "Bonjour" ou "Salut", va droit au but.
+    Directives:
+    - Sois direct, pas de politesses inutiles.
+    - Utilise un ton de leader, inspirant.
+    - Fais un lien rapide entre son activité passée et son plan futur.
+    - Maximum 2 phrases courtes.
   `;
 
   try {
@@ -60,10 +65,10 @@ export async function generateDailyCoachInsight(profile: AthleteProfile, lastAct
       model: "gemini-3-flash-preview",
       contents: prompt,
     });
-    return response.text || "Continue sur ta lancée, chaque séance te rapproche du Sub12.";
+    return response.text || "Focus sur l'objectif. Chaque watt compte.";
   } catch (error) {
     console.error("Error generating daily insight:", error);
-    return "Focus sur la séance du jour. La régularité est la clé du Sub12.";
+    return "Focus sur la séance du jour. La régularité est la clé.";
   }
 }
 
@@ -140,29 +145,39 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
   }
 }
 
-export async function getCoachAdvice(message: string, history: { role: 'user' | 'model', content: string }[], profile: AthleteProfile) {
+export async function getCoachAdvice(message: string, history: { role: 'user' | 'model', content: string }[], profile: AthleteProfile, currentPlan: Workout[], lastActivities: any[]) {
   if (!apiKey) {
     console.error("GEMINI_API_KEY is missing. Please set it in the environment.");
     return { text: "Désolé, je ne peux pas répondre pour le moment car ma clé API est manquante. Vérifie la configuration dans les paramètres." };
   }
 
+  const planContext = currentPlan.slice(0, 7).map(w => `${w.date}: ${w.title} (${w.sport}, ${w.durationMinutes}min)`).join('\n');
+  const activityContext = lastActivities.slice(0, 3).map(a => `${a.name}: ${Math.round(a.distance / 1000)}km, ${a.total_elevation_gain}m D+`).join('\n');
+  const gender = profile.coachGender === 'Woman' ? "une coach femme" : "un coach homme";
+  const coachName = profile.coachName || "Coach Sub12";
+
   const systemInstruction = `
-    Tu es "Coach Sub12", l'IA d'élite dédiée aux entrepreneurs et cadres qui visent le Sub12 sur Ironman (ou performance équivalente en endurance).
-    Ton athlète s'appelle ${profile.name}. Utilise son prénom régulièrement pour créer une relation de confiance.
+    Tu es "${coachName}", ${gender} d'élite dédiée aux entrepreneurs et cadres qui visent le Sub12 sur Ironman.
+    Ton athlète s'appelle ${profile.name}.
     Objectif principal: ${profile.targetRace} (${profile.raceDate}).
     Profil: ${profile.fitnessLevel}, Métier: ${profile.profession}.
     
+    CONTEXTE ACTUEL:
+    PLANNING DES 7 PROCHAINS JOURS:
+    ${planContext}
+    
+    DERNIÈRES ACTIVITÉS STRAVA:
+    ${activityContext}
+    
     TON ADN:
-    1. EMPATHIE ENTREPRENEURIALE: Tu comprends que son temps est sa ressource la plus rare. Si son agenda explose, adapte le plan, ne le culpabilise pas.
-    2. PRÉCISION TECHNIQUE: Parle de FTP, TSS, VMA, Allure course, Z2, Seuil. Sois le coach que tu paierais 500€/mois.
-    3. STRATÉGIE "SUB12": Ton but est l'efficience maximale. Pas de "junk miles". Chaque séance doit avoir un but précis.
-    4. PSYCHOLOGIE: Encourage la discipline, mais rappelle que le repos fait partie de l'entraînement.
+    1. CONCISION EXTRÊME: Tes réponses doivent être courtes, percutantes et aller droit au but. Pas de blabla.
+    2. MOTIVATION: Sois inspirant, exigeant mais bienveillant.
+    3. EXPERTISE: Utilise le vocabulaire technique (TSS, FTP, Z2) quand c'est pertinent.
+    4. ADAPTATION: Si l'athlète parle de fatigue ou manque de temps, propose d'adapter le plan via updateWorkouts.
     
     RÈGLES D'OR:
-    - Si fatigue/douleur: Prudence absolue. Suggère du repos ou une séance très légère.
-    - Style: Direct, motivant, expert, concis. Pas de blabla inutile.
-    - Tu peux modifier son planning via updateWorkouts si la situation l'exige.
-    - Termine souvent par une question courte pour maintenir l'engagement.
+    - Ne dépasse jamais 2-3 paragraphes courts.
+    - Termine par une question ou un encouragement fort.
   `;
 
   try {
@@ -188,8 +203,10 @@ export async function getCoachAdvice(message: string, history: { role: 'user' | 
   }
 }
 
-export async function generateSpeech(text: string): Promise<string | undefined> {
+export async function generateSpeech(text: string, gender?: 'Man' | 'Woman'): Promise<string | undefined> {
   console.log("Generating speech for text:", text.substring(0, 50) + "...");
+  const voiceName = gender === 'Woman' ? 'Kore' : 'Zephyr';
+  
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -198,7 +215,7 @@ export async function generateSpeech(text: string): Promise<string | undefined> 
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Zephyr' },
+            prebuiltVoiceConfig: { voiceName },
           },
         },
       },
