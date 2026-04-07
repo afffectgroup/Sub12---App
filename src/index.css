@@ -22,7 +22,15 @@
 }
 
 .prose p {
-  @apply mb-4 leading-relaxed text-slate-700;
+  @apply mb-4 leading-relaxed;
+}
+
+.prose-slate p {
+  @apply text-slate-700;
+}
+
+.prose-invert p {
+  @apply text-white;
 }
 
 .prose strong {

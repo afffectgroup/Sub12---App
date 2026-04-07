@@ -426,8 +426,8 @@ export default function App() {
     if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'fr-FR';
 
       recognitionRef.current.onstart = () => {
@@ -436,10 +436,26 @@ export default function App() {
       };
 
       recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        console.log("Speech recognized:", transcript);
-        handleSendMessage(transcript);
-        setIsRecording(false);
+        let finalTranscript = '';
+        let interimTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        const input = document.querySelector('input[name="message"]') as HTMLInputElement;
+        if (input) {
+          // If it's final, we append it. If it's interim, we show it.
+          // For simplicity, we'll just update the value with the latest transcript
+          const currentTranscript = Array.from(event.results)
+            .map((result: any) => result[0].transcript)
+            .join('');
+          input.value = currentTranscript;
+        }
       };
 
       recognitionRef.current.onerror = (event: any) => {
@@ -457,6 +473,7 @@ export default function App() {
       recognitionRef.current.onend = () => {
         console.log("Speech recognition ended");
         setIsRecording(false);
+        showToast("Transcription terminée. Tu peux relire et envoyer.", "success");
       };
 
       return () => {
@@ -2223,14 +2240,14 @@ export default function App() {
                     msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start"
                   )}>
                     <div className={cn(
-                      "p-3 rounded-lg text-xs leading-relaxed group relative",
+                      "p-3 rounded-lg text-xs leading-relaxed group relative shadow-sm",
                       msg.role === 'user' 
-                        ? "bg-slate-900 text-white rounded-tr-none" 
+                        ? "bg-slate-900 text-white rounded-tr-none border border-slate-800" 
                         : "bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200"
                     )}>
                       <div className={cn(
                         "prose prose-sm max-w-none",
-                        msg.role === 'user' ? "prose-invert" : "prose-slate"
+                        msg.role === 'user' ? "prose-invert text-white" : "prose-slate"
                       )}>
                         <ReactMarkdown>
                           {msg.content}

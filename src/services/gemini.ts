@@ -170,37 +170,68 @@ export async function getCoachAdvice(message: string, history: { role: 'user' | 
     ${activityContext}
     
     TON ADN:
-    1. CONCISION EXTRÊME: Tes réponses doivent être courtes, percutantes et aller droit au but. Pas de blabla.
+    1. CONCISION ABSOLUE: Tes réponses doivent être ultra-courtes (max 40-50 mots). Pas de blabla, pas de politesses.
     2. MOTIVATION: Sois inspirant, exigeant mais bienveillant.
-    3. EXPERTISE: Utilise le vocabulaire technique (TSS, FTP, Z2) quand c'est pertinent.
+    3. EXPERTISE: Utilise le vocabulaire technique (TSS, FTP, Z2) seulement si nécessaire.
     4. ADAPTATION: Si l'athlète parle de fatigue ou manque de temps, propose d'adapter le plan via updateWorkouts.
     
     RÈGLES D'OR:
-    - Ne dépasse jamais 2-3 paragraphes courts.
+    - Ne dépasse jamais 1-2 paragraphes très courts.
     - Termine par une question ou un encouragement fort.
+    - IMPORTANT: Si tu utilises l'outil "updateWorkouts", NE METS PAS le JSON dans ta réponse texte. Ta réponse texte doit rester une conversation naturelle.
   `;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [
-        ...history.map(h => ({ role: h.role, parts: [{ text: h.content }] })),
-        { role: 'user', parts: [{ text: message }] }
-      ],
-      config: {
-        systemInstruction,
-        tools: [{ functionDeclarations: [updateWorkoutsTool] }]
-      },
-    });
+  const maxRetries = 3;
+  let retryCount = 0;
 
-    return {
-      text: response.text,
-      functionCalls: response.functionCalls
-    };
-  } catch (error) {
-    console.error("Gemini Coach Advice Error:", error);
-    throw error;
+  while (retryCount < maxRetries) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+          ...history.map(h => ({ role: h.role, parts: [{ text: h.content }] })),
+          { role: 'user', parts: [{ text: message }] }
+        ],
+        config: {
+          systemInstruction,
+          tools: [{ functionDeclarations: [updateWorkoutsTool] }]
+        },
+      });
+
+      let cleanText = response.text || "";
+      
+      // Remove any leaked JSON blocks from the text response
+      if (cleanText.includes('{') && cleanText.includes('newWorkouts')) {
+        // Try to strip out the JSON part if it leaked into the text
+        cleanText = cleanText.replace(/\{[\s\S]*"newWorkouts"[\s\S]*\}/g, '').trim();
+        // Also remove markdown code blocks containing JSON
+        cleanText = cleanText.replace(/```json[\s\S]*?```/g, '').trim();
+        cleanText = cleanText.replace(/```[\s\S]*?```/g, '').trim();
+      }
+
+      return {
+        text: cleanText || "Plan mis à jour. On continue !",
+        functionCalls: response.functionCalls
+      };
+    } catch (error: any) {
+      const is503 = error?.message?.includes('503') || error?.status === 503;
+      if (is503 && retryCount < maxRetries - 1) {
+        retryCount++;
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.warn(`Gemini 503 error, retrying in ${delay}ms... (Attempt ${retryCount}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      console.error("Gemini Coach Advice Error:", error);
+      if (is503) {
+        return { text: "Le service est actuellement surchargé. Peux-tu réessayer dans quelques secondes ?" };
+      }
+      throw error;
+    }
   }
+  
+  return { text: "Désolé, j'ai rencontré une erreur technique. Peux-tu reformuler ?" };
 }
 
 export async function generateSpeech(text: string, gender?: 'Man' | 'Woman'): Promise<string | undefined> {
