@@ -222,7 +222,9 @@ const SportImage = ({ sport, className }: { sport: Sport; className?: string }) 
 const Logo = ({ className = "w-10 h-10", iconOnly = false }: { className?: string, iconOnly?: boolean }) => (
   <div className={cn("flex items-center gap-3", className)}>
     <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-orange-600/20 flex-shrink-0">
-      <Activity size={24} strokeWidth={2.5} />
+      <svg viewBox="0 0 32 32" className="w-7 h-7" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M26 16h-4l-3 9-6-18-3 9h-4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
     </div>
     {!iconOnly && <span className="text-2xl font-black tracking-tight text-slate-900">Sub12</span>}
   </div>
@@ -1228,7 +1230,9 @@ export default function App() {
           className="bg-white p-8 rounded-xl shadow-2xl max-w-md w-full border border-slate-100"
         >
           <div className="w-12 h-12 bg-slate-900 rounded-lg flex items-center justify-center text-orange-500 mb-6 mx-auto shadow-sm">
-            <Activity size={28} strokeWidth={2.5} />
+            <svg viewBox="0 0 32 32" className="w-8 h-8" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M26 16h-4l-3 9-6-18-3 9h-4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </div>
           
           <div className="absolute top-4 right-4">
@@ -2215,7 +2219,9 @@ export default function App() {
               {/* Coach Header */}
               <div className="p-3 border-b border-slate-100 flex items-center gap-3 bg-slate-50">
                 <div className="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-orange-500 shadow-sm">
-                  <Activity size={20} strokeWidth={2.5} />
+                  <svg viewBox="0 0 32 32" className="w-6 h-6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M26 16h-4l-3 9-6-18-3 9h-4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-slate-900">{profile.coachName || "Coach AI"}</h3>
