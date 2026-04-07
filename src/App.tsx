@@ -1106,6 +1106,8 @@ export default function App() {
     }
   };
 
+  const [streamingText, setStreamingText] = useState("");
+
   async function handleSendMessage(content: string) {
     if (!content.trim() && !selectedImage) return;
     if (!user) return;
@@ -1124,6 +1126,7 @@ export default function App() {
     
     try {
       setIsLoading(true);
+      setStreamingText("");
       await setDoc(doc(db, userMsgPath), userMsg);
       const currentImage = selectedImage;
       setSelectedImage(null); // Clear image after sending
@@ -1135,6 +1138,7 @@ export default function App() {
         profile, 
         workouts, 
         stravaActivities,
+        (chunk) => setStreamingText(chunk),
         currentImage || undefined
       );
       
@@ -1149,13 +1153,8 @@ export default function App() {
                 updatedAt: Date.now()
               });
             }
-            const systemMsg: ChatMessage = { 
-              uid: user.uid,
-              role: 'model', 
-              content: "J'ai mis à jour ton planning pour l'adapter à ta situation. Tu peux le consulter dans l'onglet Plan.", 
-              timestamp: Date.now() 
-            };
-            await setDoc(doc(db, `users/${user.uid}/messages/${Date.now()}`), systemMsg);
+            // No need to write a system message to Firestore here, 
+            // the model's text response will explain the changes.
           }
         }
       }
@@ -1174,9 +1173,10 @@ export default function App() {
       }
     } catch (error) {
       console.error("Chat error:", error);
-      alert("Désolé, une erreur est survenue lors de l'envoi du message. Peux-tu réessayer ?");
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/messages`);
     } finally {
       setIsLoading(false);
+      setStreamingText("");
     }
   }
 
@@ -2286,7 +2286,21 @@ export default function App() {
                     </span>
                   </div>
                 ))}
-                {isLoading && (
+                {streamingText && (
+                  <div className="flex flex-col max-w-[90%] mr-auto items-start">
+                    <div className="p-3 rounded-lg text-xs leading-relaxed bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200 shadow-sm">
+                      <div className="prose prose-sm max-w-none prose-slate">
+                        <ReactMarkdown>
+                          {streamingText}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                    <span className="mono-label text-slate-400 mt-1">
+                      Coach • En train d'écrire...
+                    </span>
+                  </div>
+                )}
+                {isLoading && !streamingText && (
                   <div className="flex items-center gap-2 text-slate-400">
                     <Loader2 size={12} className="animate-spin" />
                     <span className="mono-label">Analyse en cours...</span>

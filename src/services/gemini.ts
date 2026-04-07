@@ -161,6 +161,7 @@ export async function getCoachAdvice(
   profile: AthleteProfile, 
   currentPlan: Workout[], 
   lastActivities: any[],
+  onStream?: (text: string) => void,
   image?: string
 ) {
   if (!apiKey) {
@@ -232,7 +233,7 @@ export async function getCoachAdvice(
         });
       }
 
-      const response = await ai.models.generateContent({
+      const result = await ai.models.generateContentStream({
         model: "gemini-3-flash-preview",
         contents: [
           ...limitedHistory.map(h => ({ role: h.role, parts: [{ text: h.content }] })),
@@ -244,7 +245,21 @@ export async function getCoachAdvice(
         },
       });
 
-      let cleanText = response.text || "";
+      let fullText = "";
+      let functionCalls: any[] = [];
+
+      for await (const chunk of result) {
+        const chunkText = chunk.text;
+        if (chunkText) {
+          fullText += chunkText;
+          if (onStream) onStream(fullText);
+        }
+        if (chunk.functionCalls) {
+          functionCalls = [...functionCalls, ...chunk.functionCalls];
+        }
+      }
+
+      let cleanText = fullText;
       
       // Aggressively remove any leaked JSON or function calls from the text response
       if (cleanText.includes('newWorkouts') || cleanText.includes('updateWorkouts') || cleanText.includes('{')) {
@@ -261,7 +276,7 @@ export async function getCoachAdvice(
 
       return {
         text: cleanText || "Plan mis à jour. On continue !",
-        functionCalls: response.functionCalls
+        functionCalls: functionCalls.length > 0 ? functionCalls : undefined
       };
     } catch (error: any) {
       const is503 = error?.message?.includes('503') || error?.status === 503;
