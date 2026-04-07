@@ -279,20 +279,21 @@ export async function getCoachAdvice(
         functionCalls: functionCalls.length > 0 ? functionCalls : undefined
       };
     } catch (error: any) {
-      const is503 = error?.message?.includes('503') || error?.status === 503;
-      if (is503 && retryCount < maxRetries - 1) {
+      const errorMsg = error?.message || "";
+      const isRetryable = errorMsg.includes('503') || errorMsg.includes('500') || errorMsg.includes('INTERNAL') || error?.status === 503 || error?.status === 500;
+      
+      if (isRetryable && retryCount < maxRetries - 1) {
         retryCount++;
         const delay = Math.pow(2, retryCount) * 1000;
-        console.warn(`Gemini 503 error, retrying in ${delay}ms... (Attempt ${retryCount}/${maxRetries})`);
+        console.warn(`Gemini API error (${errorMsg}), retrying in ${delay}ms... (Attempt ${retryCount}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
       
       console.error("Gemini Coach Advice Error:", error);
-      if (is503) {
-        return { text: "Le service est actuellement surchargé. Peux-tu réessayer dans quelques secondes ?" };
-      }
-      throw error;
+      return { 
+        text: "Désolé, le service d'intelligence artificielle est temporairement indisponible ou surchargé. Peux-tu réessayer dans un instant ?" 
+      };
     }
   }
   

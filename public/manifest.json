@@ -1,0 +1,17 @@
+{
+  "name": "Sub12 - Coach Triathlon",
+  "short_name": "Sub12",
+  "description": "L'outil ultime pour les triathlètes visant le Sub12 sur Ironman.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#ea580c",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
