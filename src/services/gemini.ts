@@ -207,7 +207,8 @@ export async function getCoachAdvice(
 
     IMPORTANT: 
     - Si tu modifies le plan, explique CLAIREMENT les changements (ex: "J'ai allégé ta séance de demain car tu as fait une grosse sortie aujourd'hui").
-    - NE METS JAMAIS de JSON brut dans ta réponse texte.
+    - NE METS JAMAIS de code, de JSON, ou de texte technique comme "updateWorkouts(...)" ou "print(...)" dans ta réponse texte. Ta réponse doit être uniquement du texte naturel pour l'athlète.
+    - Ne décris JAMAIS tes actions internes ou l'utilisation de tes outils. Réponds directement à l'athlète.
   `;
 
   const maxRetries = 3;
@@ -245,13 +246,17 @@ export async function getCoachAdvice(
 
       let cleanText = response.text || "";
       
-      // Remove any leaked JSON blocks from the text response
-      if (cleanText.includes('{') && cleanText.includes('newWorkouts')) {
-        // Try to strip out the JSON part if it leaked into the text
-        cleanText = cleanText.replace(/\{[\s\S]*"newWorkouts"[\s\S]*\}/g, '').trim();
-        // Also remove markdown code blocks containing JSON
-        cleanText = cleanText.replace(/```json[\s\S]*?```/g, '').trim();
-        cleanText = cleanText.replace(/```[\s\S]*?```/g, '').trim();
+      // Aggressively remove any leaked JSON or function calls from the text response
+      if (cleanText.includes('newWorkouts') || cleanText.includes('updateWorkouts') || cleanText.includes('{')) {
+        // Remove JSON blocks
+        cleanText = cleanText.replace(/\{[\s\S]*"newWorkouts"[\s\S]*\}/g, '');
+        // Remove function call style leaks (e.g. print(updateWorkouts(...)) or updateWorkouts(...))
+        cleanText = cleanText.replace(/(?:print\s*)?updateWorkouts\s*\([\s\S]*?\)/g, '');
+        // Remove markdown code blocks
+        cleanText = cleanText.replace(/```(?:json)?[\s\S]*?```/g, '');
+        // Remove any remaining curly brace blocks that look like JSON
+        cleanText = cleanText.replace(/\{[\s\S]*?\}/g, (match) => match.includes('newWorkouts') ? '' : match);
+        cleanText = cleanText.trim();
       }
 
       return {
