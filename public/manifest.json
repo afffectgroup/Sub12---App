@@ -1,16 +1,29 @@
 {
-  "name": "Sub12 - Coach Triathlon",
+  "name": "Sub12 - Coach IA pour athlètes",
   "short_name": "Sub12",
-  "description": "L'outil ultime pour les triathlètes visant le Sub12 sur Ironman.",
+  "description": "Coach IA pour athlètes",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
+  "background_color": "#f8fafc",
   "theme_color": "#ea580c",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]
