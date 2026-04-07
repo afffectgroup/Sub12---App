@@ -39,7 +39,7 @@ import {
   Volume2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format, differenceInDays, parseISO, addDays, isSameDay, startOfDay, startOfWeek } from 'date-fns';
+import { format, differenceInDays, parseISO, addDays, isSameDay, startOfDay, startOfWeek, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { 
   LineChart, 
@@ -169,32 +169,33 @@ const SportIcon = ({ sport, className, size = 20 }: { sport: Sport; className?: 
 
 const RaceLogo = ({ name, className = "w-10 h-10" }: { name: string, className?: string }) => {
   const lowerName = name.toLowerCase();
-  let src = "https://images.unsplash.com/photo-1526676023601-d02f1c1b8b70?w=100&h=100&fit=crop"; // Better default
   
-  if (lowerName.includes('triathlon l/xxl') || lowerName.includes('ironman')) {
-    src = "https://images.unsplash.com/photo-1530549387631-f535c7634c3c?w=100&h=100&fit=crop"; // Full distance
-  } else if (lowerName.includes('triathlon')) {
-    src = "https://images.unsplash.com/photo-1530549387634-e797ca999656?w=100&h=100&fit=crop"; // Sprint/Olympic
-  } else if (lowerName.includes('paris')) {
-  } else if (lowerName.includes('hambourg') || lowerName.includes('hamburg')) {
-    src = "https://images.unsplash.com/photo-1555992336-03a23c7b20ee?w=100&h=100&fit=crop"; // Hamburg
-  } else if (lowerName.includes('marathon')) {
-    src = "https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?w=100&h=100&fit=crop"; // Running
-  } else if (lowerName.includes('trail')) {
-    src = "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=100&h=100&fit=crop"; // Mountains
-  } else if (lowerName.includes('hyrox')) {
-    src = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop"; // Fitness
-  } else if (lowerName.includes('nice')) {
-    src = "https://images.unsplash.com/photo-1533619039164-4c63f042062b?w=100&h=100&fit=crop"; // Nice
-  } else if (lowerName.includes('londres') || lowerName.includes('london')) {
-    src = "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=100&h=100&fit=crop"; // London
-  } else if (lowerName.includes('new york') || lowerName.includes('nyc')) {
-    src = "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=100&h=100&fit=crop"; // NYC
+  let icon = <Trophy size={20} className="text-orange-600" />;
+  let bgColor = "bg-orange-50";
+  
+  if (lowerName.includes('triathlon') || lowerName.includes('ironman')) {
+    icon = <Activity size={20} className="text-blue-600" />;
+    bgColor = "bg-blue-50";
+  } else if (lowerName.includes('marathon') || lowerName.includes('run') || lowerName.includes('10k') || lowerName.includes('semi')) {
+    icon = <Footprints size={20} className="text-orange-600" />;
+    bgColor = "bg-orange-50";
+  } else if (lowerName.includes('bike') || lowerName.includes('ride') || lowerName.includes('cyclisme')) {
+    icon = <Bike size={20} className="text-green-600" />;
+    bgColor = "bg-green-50";
+  } else if (lowerName.includes('swim') || lowerName.includes('natation')) {
+    icon = <Waves size={20} className="text-cyan-600" />;
+    bgColor = "bg-cyan-50";
+  } else if (lowerName.includes('trail') || lowerName.includes('mountain')) {
+    icon = <TrendingUp size={20} className="text-emerald-600" />;
+    bgColor = "bg-emerald-50";
+  } else if (lowerName.includes('hyrox') || lowerName.includes('crossfit') || lowerName.includes('strength')) {
+    icon = <Dumbbell size={20} className="text-slate-600" />;
+    bgColor = "bg-slate-100";
   }
 
   return (
-    <div className={cn("rounded-xl overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 shadow-sm", className)}>
-      <img src={src} alt={name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+    <div className={cn("rounded-xl flex items-center justify-center border border-slate-100 flex-shrink-0 shadow-sm", bgColor, className)}>
+      {icon}
     </div>
   );
 };
@@ -1651,30 +1652,43 @@ export default function App() {
                     <Activity size={14} className="text-orange-500" />
                     Tableau de Bord Strava
                   </h3>
-                  <div className="flex gap-2">
-                    <select 
-                      value={stravaFilter.period}
-                      onChange={e => setStravaFilter({...stravaFilter, period: e.target.value as any})}
-                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold outline-none focus:ring-1 focus:ring-orange-500"
-                    >
-                      <option value="week">Semaine</option>
-                      <option value="month">Mois</option>
-                      <option value="year">Année</option>
-                      <option value="all">Tout</option>
-                    </select>
-                    <select 
-                      value={stravaFilter.type}
-                      onChange={e => setStravaFilter({...stravaFilter, type: e.target.value})}
-                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold outline-none focus:ring-1 focus:ring-orange-500"
-                    >
-                      <option value="all">Tous sports</option>
-                      <option value="Run">Course</option>
-                      <option value="Ride">Vélo</option>
-                      <option value="Swim">Natation</option>
-                      <option value="Walk">Marche</option>
-                      <option value="Hike">Rando</option>
-                      <option value="WeightTraining">Renfo</option>
-                    </select>
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="flex gap-2">
+                      <select 
+                        value={stravaFilter.period}
+                        onChange={e => setStravaFilter({...stravaFilter, period: e.target.value as any})}
+                        className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold outline-none focus:ring-1 focus:ring-orange-500"
+                      >
+                        <option value="week">Semaine</option>
+                        <option value="month">Mois</option>
+                        <option value="year">Année</option>
+                        <option value="all">Tout</option>
+                      </select>
+                      <select 
+                        value={stravaFilter.type}
+                        onChange={e => setStravaFilter({...stravaFilter, type: e.target.value})}
+                        className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold outline-none focus:ring-1 focus:ring-orange-500"
+                      >
+                        <option value="all">Tous sports</option>
+                        <option value="Run">Course</option>
+                        <option value="Ride">Vélo</option>
+                        <option value="Swim">Natation</option>
+                        <option value="Walk">Marche</option>
+                        <option value="Hike">Rando</option>
+                        <option value="WeightTraining">Renfo</option>
+                      </select>
+                    </div>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter px-1">
+                      {(() => {
+                        const now = new Date();
+                        if (stravaFilter.period === 'all') return 'Toutes les activités';
+                        let days = 7;
+                        if (stravaFilter.period === 'month') days = 30;
+                        if (stravaFilter.period === 'year') days = 365;
+                        const start = subDays(now, days);
+                        return `${format(start, 'd MMM', { locale: fr })} au ${format(now, 'd MMM', { locale: fr })}`;
+                      })()}
+                    </p>
                   </div>
                 </div>
 
