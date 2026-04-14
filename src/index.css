@@ -1,58 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
-/* ── Reset de base ─────────────────────────────────────────── */
-*, *::before, *::after {
-  box-sizing: border-box;
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  /* Refined rounding for a less "childish" look */
+  --radius-3xl: 1rem;
+  --radius-2xl: 0.75rem;
+  --radius-xl: 0.5rem;
 }
 
-/* ── Fix overflow horizontal mobile ──────────────────────────
-   Empêche le glissement horizontal involontaire sur mobile     */
-html {
-  overflow-x: hidden;
-  width: 100%;
+@layer base {
+  body {
+    @apply font-sans antialiased bg-slate-50 text-slate-900;
+  }
 }
 
-body {
-  overflow-x: hidden;
-  width: 100%;
-  max-width: 100vw;
-  position: relative;
+.prose {
+  @apply max-w-none;
 }
 
-#root {
-  overflow-x: hidden;
-  width: 100%;
+.prose p {
+  @apply mb-4 leading-relaxed;
 }
 
-/* ── Typographie ──────────────────────────────────────────── */
-@font-face {
-  font-family: 'JetBrains Mono';
-  src: url('https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOlOTrpM.woff2') format('woff2');
-  font-weight: 400 800;
-  font-display: swap;
+.prose-slate p {
+  @apply text-slate-700;
 }
 
-/* ── Utilitaires custom ───────────────────────────────────── */
+.prose-invert p {
+  @apply text-white;
+}
+
+.prose strong {
+  @apply font-bold text-orange-600;
+}
+
+.prose ul {
+  @apply list-disc pl-5 mb-4 space-y-1 text-slate-700;
+}
+
+/* Technical accents */
 .mono-label {
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  @apply font-mono text-[10px] uppercase tracking-wider font-medium;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 3px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #e2e8f0;
-  border-radius: 10px;
-}
-
-/* ── Supprime le rebond horizontal iOS (overscroll) ────────── */
-body {
-  overscroll-behavior-x: none;
-}

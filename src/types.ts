@@ -20,6 +20,20 @@ export interface SecondaryRace {
   type?: 'race' | 'volume' | 'other';
 }
 
+export interface NutritionAdvice {
+  dailyCalories?: number;
+  macros?: {
+    carbs: string;
+    protein: string;
+    fats: string;
+  };
+  tips: string[];
+  hydration: string;
+  preWorkout?: string;
+  postWorkout?: string;
+  updatedAt: number;
+}
+
 export interface AthleteProfile {
   uid: string;
   name: string;
@@ -48,6 +62,7 @@ export interface AthleteProfile {
     css?: string; // min/100m (e.g., "1:45")
     maxHr?: number;
     restHr?: number;
+    restHrValue?: number;
   };
   stravaConnected?: boolean;
   stravaId?: number;
@@ -58,6 +73,7 @@ export interface AthleteProfile {
     athleteId: number;
     connectedAt: number;
   };
+  nutritionPlan?: NutritionAdvice;
 }
 
 export interface ChatMessage {
