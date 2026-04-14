@@ -3,12 +3,14 @@ import { AthleteProfile, Workout, ChatMessage, NutritionAdvice } from "../types"
 import { differenceInDays, parseISO } from "date-fns";
 
 const apiKey = process.env.GEMINI_API_KEY as string;
-if (!apiKey || apiKey === "undefined") {
-  console.warn("GEMINI_API_KEY is not defined in the environment. Chat and Plan generation will fail.");
+const isApiKeyValid = apiKey && apiKey !== "undefined" && apiKey.length > 0;
+
+if (!isApiKeyValid) {
+  console.warn("GEMINI_API_KEY is not defined or invalid in the environment. Chat and Plan generation will fail.");
 } else {
-  console.log("GEMINI_API_KEY is defined.");
+  console.log("GEMINI_API_KEY is defined and valid.");
 }
-const ai = new GoogleGenAI({ apiKey: (apiKey === "undefined" ? "" : apiKey) });
+const ai = new GoogleGenAI({ apiKey: (isApiKeyValid ? apiKey : "") });
 
 const updateWorkoutsTool: FunctionDeclaration = {
   name: "updateWorkouts",
@@ -40,6 +42,7 @@ const updateWorkoutsTool: FunctionDeclaration = {
 };
 
 export async function generateDailyCoachInsight(profile: AthleteProfile, lastActivity: any, todayWorkout: Workout | undefined, currentPlan: Workout[]): Promise<string> {
+  if (!isApiKeyValid) return "Focus sur l'objectif. La régularité est la clé.";
   const planContext = currentPlan.slice(0, 3).map(w => `${w.date}: ${w.title}`).join(', ');
   const gender = profile.coachGender === 'Woman' ? "une coach femme" : "un coach homme";
   const coachName = profile.coachName || "Coach Sub12";
@@ -73,6 +76,7 @@ export async function generateDailyCoachInsight(profile: AthleteProfile, lastAct
 }
 
 export async function generateTrainingPlan(profile: AthleteProfile, chatHistory: ChatMessage[] = []): Promise<Workout[]> {
+  if (!isApiKeyValid) return [];
   const historyContext = chatHistory.length > 0 
     ? `Prends en compte les échanges récents avec l'athlète: ${chatHistory.slice(-5).map(h => `${h.role}: ${h.content}`).join(' | ')}`
     : "";
@@ -159,9 +163,9 @@ export async function getCoachAdvice(
   onStream?: (text: string) => void,
   image?: string
 ) {
-  if (!apiKey) {
-    console.error("GEMINI_API_KEY is missing. Please set it in the environment.");
-    return { text: "Désolé, je ne peux pas répondre pour le moment car ma clé API est manquante. Vérifie la configuration dans les paramètres." };
+  if (!isApiKeyValid) {
+    console.error("GEMINI_API_KEY is missing or invalid.");
+    return { text: "Désolé, je ne peux pas répondre car la clé API Gemini est manquante ou invalide. Tu peux la configurer dans les paramètres de l'application (icône engrenage en haut à droite)." };
   }
 
   const planContext = currentPlan.slice(0, 10).map(w => `- ${w.date}: ${w.title} (${w.sport}, ${w.durationMinutes}min, ${w.intensity})`).join('\n');
@@ -296,7 +300,7 @@ export async function getCoachAdvice(
 }
 
 export async function getNutritionAdvice(profile: AthleteProfile, currentPlan: Workout[]): Promise<NutritionAdvice | null> {
-  if (!apiKey) return null;
+  if (!isApiKeyValid) return null;
 
   const planContext = currentPlan.slice(0, 7).map(w => `- ${w.date}: ${w.title} (${w.durationMinutes}min)`).join('\n');
   
@@ -340,6 +344,7 @@ export async function getNutritionAdvice(profile: AthleteProfile, currentPlan: W
 }
 
 export async function generateSpeech(text: string, gender?: 'Man' | 'Woman'): Promise<string | undefined> {
+  if (!isApiKeyValid) return undefined;
   console.log("Generating speech for text:", text.substring(0, 50) + "...");
   const voiceName = gender === 'Woman' ? 'Kore' : 'Zephyr';
   
