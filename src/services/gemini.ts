@@ -62,10 +62,10 @@ export async function generateDailyCoachInsight(profile: AthleteProfile, lastAct
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
+      model: "gemini-1.5-flash",
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
     });
-    return response.text || "Focus sur l'objectif. Chaque watt compte.";
+    return response.candidates?.[0]?.content?.parts?.[0]?.text || "Focus sur l'objectif. Chaque watt compte.";
   } catch (error) {
     console.error("Error generating daily insight:", error);
     return "Focus sur la séance du jour. La régularité est la clé.";
@@ -109,8 +109,8 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
+      model: "gemini-1.5-flash",
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -141,13 +141,8 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
       },
     });
 
-    const text = response.text;
+    const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
     console.log("Gemini Plan Response:", text);
-    if (!text) {
-      console.error("Empty response from Gemini");
-      return [];
-    }
-    
     return JSON.parse(text);
   } catch (error) {
     console.error("Error generating training plan:", error);
@@ -234,7 +229,7 @@ export async function getCoachAdvice(
       }
 
       const result = await ai.models.generateContentStream({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-1.5-pro",
         contents: [
           ...limitedHistory.map(h => ({ role: h.role, parts: [{ text: h.content }] })),
           { role: 'user', parts: userParts }
@@ -330,12 +325,13 @@ export async function getNutritionAdvice(profile: AthleteProfile, currentPlan: W
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: prompt,
+      model: "gemini-1.5-pro",
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: { responseMimeType: "application/json" }
     });
     
-    const data = JSON.parse(response.text || "{}");
+    const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    const data = JSON.parse(text);
     return { ...data, updatedAt: Date.now() };
   } catch (error) {
     console.error("Error generating nutrition advice:", error);
@@ -349,7 +345,7 @@ export async function generateSpeech(text: string, gender?: 'Man' | 'Woman'): Pr
   
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: "gemini-1.5-flash",
       contents: [{ parts: [{ text: `Dis de manière motivante et professionnelle: ${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
