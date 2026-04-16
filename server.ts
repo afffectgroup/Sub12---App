@@ -15,9 +15,11 @@ const firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
+console.log("Anthropic SDK initialized. Key present:", !!process.env.ANTHROPIC_API_KEY);
 
 // Init Gemini (for TTS fallback)
 const geminiAi = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
+console.log("Gemini SDK initialized. Key present:", !!process.env.GEMINI_API_KEY);
 
 // Init Admin SDK
 if (!getApps().length) {
@@ -172,14 +174,23 @@ async function startServer() {
 
   // AI Endpoints
   app.post("/api/ai/insight", async (req, res) => {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(401).json({ error: "Clé API Anthropic manquante. Veuillez l'ajouter dans les Settings." });
+    }
     try {
       const { prompt } = req.body;
       const message = await anthropic.messages.create({
-        model: "claude-3-5-haiku-20241022",
-        max_tokens: 100,
+        model: "claude-3-5-haiku-latest",
+        max_tokens: 150,
         messages: [{ role: "user", content: prompt }],
       });
-      res.json({ text: (message.content[0] as any).text });
+      
+      const text = message.content
+        .filter((block: any) => block.type === 'text')
+        .map((block: any) => block.text)
+        .join('\n');
+
+      res.json({ text });
     } catch (error: any) {
       console.error("Insight error:", error);
       res.status(500).json({ error: error.message });
@@ -187,14 +198,23 @@ async function startServer() {
   });
 
   app.post("/api/ai/plan", async (req, res) => {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(401).json({ error: "Clé API Anthropic manquante." });
+    }
     try {
       const { prompt } = req.body;
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 2000,
+        model: "claude-3-5-sonnet-latest",
+        max_tokens: 4000,
         messages: [{ role: "user", content: prompt }],
       });
-      res.json({ text: (response.content[0] as any).text });
+      
+      const text = response.content
+        .filter((block: any) => block.type === 'text')
+        .map((block: any) => block.text)
+        .join('\n');
+
+      res.json({ text });
     } catch (error: any) {
       console.error("Plan error:", error);
       res.status(500).json({ error: error.message });
@@ -202,14 +222,23 @@ async function startServer() {
   });
 
   app.post("/api/ai/nutrition", async (req, res) => {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(401).json({ error: "Clé API Anthropic manquante." });
+    }
     try {
       const { prompt } = req.body;
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 1000,
+        model: "claude-3-5-sonnet-latest",
+        max_tokens: 2000,
         messages: [{ role: "user", content: prompt }],
       });
-      res.json({ text: (response.content[0] as any).text });
+      
+      const text = response.content
+        .filter((block: any) => block.type === 'text')
+        .map((block: any) => block.text)
+        .join('\n');
+
+      res.json({ text });
     } catch (error: any) {
       console.error("Nutrition error:", error);
       res.status(500).json({ error: error.message });
@@ -217,15 +246,15 @@ async function startServer() {
   });
 
   app.post("/api/ai/advice", async (req, res) => {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(401).json({ error: "Clé API Anthropic manquante." });
+    }
     try {
       const { systemInstruction, messages, tools } = req.body;
       
-      // Handle streaming manually or just return the whole thing for simplicity first?
-      // The client expects a stream if possible.
-      // For now, let's do a non-streaming response to ensure it works, then add streaming if needed.
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 1024,
+        model: "claude-3-5-sonnet-latest",
+        max_tokens: 2048,
         system: systemInstruction,
         tools: tools,
         messages: messages,

@@ -545,6 +545,8 @@ export default function App() {
         setProfile(updatedProfile);
         await setDoc(doc(db, `users/${user.uid}`), updatedProfile);
         showToast("Plan nutritionnel généré !", "success");
+      } else {
+        showToast("Impossible de générer le plan nutritionnel.", "error");
       }
     } catch (error) {
       console.error("Nutrition error:", error);

@@ -225,9 +225,10 @@ export async function getCoachAdvice(
       text: fullText || "Plan mis à jour. On continue !",
       functionCalls: functionCalls.length > 0 ? functionCalls : undefined
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error getting coach advice:", error);
-    return { text: "Désolé, j'ai rencontré une erreur avec le coach. Peux-tu réessayer ?" };
+    const errorMsg = error.response?.data?.error || error.message;
+    return { text: `Désolé, j'ai rencontré une erreur avec le coach : ${errorMsg}. Peux-tu réessayer ?` };
   }
 }
 
@@ -266,8 +267,10 @@ export async function getNutritionAdvice(profile: AthleteProfile, currentPlan: W
       return { ...data, updatedAt: Date.now() };
     }
     return null;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating nutrition advice:", error);
+    const errorMsg = error.response?.data?.error || error.message;
+    alert(`Erreur nutrition : ${errorMsg}`);
     return null;
   }
 }
