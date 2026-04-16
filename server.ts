@@ -11,6 +11,12 @@ import { GoogleGenAI, Modality } from "@google/genai";
 
 const firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
 
+// Models Anthropic — centralisés pour faciliter les futurs upgrades
+const MODELS = {
+  fast: "claude-haiku-4-5",      // insights courts, tâches rapides
+  smart: "claude-sonnet-4-6",    // plans, nutrition, coach conversationnel
+};
+
 // Init Anthropic
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -180,7 +186,7 @@ async function startServer() {
     try {
       const { prompt } = req.body;
       const message = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
+        model: MODELS.fast,
         max_tokens: 150,
         messages: [{ role: "user", content: prompt }],
       });
@@ -204,7 +210,7 @@ async function startServer() {
     try {
       const { prompt } = req.body;
       const response = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
+        model: MODELS.smart,
         max_tokens: 4000,
         messages: [{ role: "user", content: prompt }],
       });
@@ -228,7 +234,7 @@ async function startServer() {
     try {
       const { prompt } = req.body;
       const response = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
+        model: MODELS.smart,
         max_tokens: 2000,
         messages: [{ role: "user", content: prompt }],
       });
@@ -253,7 +259,7 @@ async function startServer() {
       const { systemInstruction, messages, tools } = req.body;
       
       const response = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
+        model: MODELS.smart,
         max_tokens: 2048,
         system: systemInstruction,
         tools: tools,
