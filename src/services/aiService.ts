@@ -144,10 +144,19 @@ export async function getCoachAdvice(
     - NE METS JAMAIS de code, de JSON, ou de texte technique comme "updateWorkouts(...)" ou "print(...)" dans ta réponse texte. Ta réponse doit être uniquement du texte naturel pour l'athlète.
   `;
 
-  const messages: any[] = history.map(h => ({
-    role: h.role === 'model' ? 'assistant' : 'user',
-    content: h.content
-  }));
+  // Convert history but avoid duplicates if the latest message is already there
+  const messages: any[] = [];
+  for (let i = 0; i < history.length; i++) {
+    const h = history[i];
+    // If the message is the same as the current one and it's from the same role, skip it to avoid duplicates
+    if (i === history.length - 1 && h.role === 'user' && h.content === message) {
+      continue;
+    }
+    messages.push({
+      role: h.role === 'model' ? 'assistant' : 'user',
+      content: h.content
+    });
+  }
 
   const currentContent: any[] = [{ type: 'text', text: message }];
   

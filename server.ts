@@ -180,7 +180,7 @@ async function startServer() {
     try {
       const { prompt } = req.body;
       const message = await anthropic.messages.create({
-        model: "claude-3-5-haiku-latest",
+        model: "claude-3-5-haiku-20241022",
         max_tokens: 150,
         messages: [{ role: "user", content: prompt }],
       });
@@ -204,7 +204,7 @@ async function startServer() {
     try {
       const { prompt } = req.body;
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-latest",
+        model: "claude-3-5-sonnet-20241022",
         max_tokens: 4000,
         messages: [{ role: "user", content: prompt }],
       });
@@ -228,7 +228,7 @@ async function startServer() {
     try {
       const { prompt } = req.body;
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-latest",
+        model: "claude-3-5-sonnet-20241022",
         max_tokens: 2000,
         messages: [{ role: "user", content: prompt }],
       });
@@ -253,7 +253,7 @@ async function startServer() {
       const { systemInstruction, messages, tools } = req.body;
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-latest",
+        model: "claude-3-5-sonnet-20241022",
         max_tokens: 2048,
         system: systemInstruction,
         tools: tools,
@@ -272,7 +272,7 @@ async function startServer() {
     try {
       const { text, voiceName } = req.body;
       const response = await geminiAi.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
+        model: "gemini-3.1-flash-tts-preview",
         contents: [{ parts: [{ text: `Dis de manière motivante et professionnelle: ${text}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
