@@ -6,8 +6,18 @@ import cookieParser from "cookie-parser";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import fs from "fs";
+import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI, Modality } from "@google/genai";
 
 const firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
+
+// Init Anthropic
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
+});
+
+// Init Gemini (for TTS fallback)
+const geminiAi = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 // Init Admin SDK
 if (!getApps().length) {
@@ -87,16 +97,32 @@ async function startServer() {
 
     let { accessToken, refreshToken, expiresAt } = data.strava;
 
+    const clientId = process.env.STRAVA_CLIENT_ID?.trim();
+    const clientSecret = process.env.STRAVA_CLIENT_SECRET?.trim();
+
     // Check if expired (with 5 min buffer)
-    if (Date.now() / 1000 > expiresAt - 300) {
+    if (Date.now() / 1000 > (expiresAt || 0) - 300) {
+      console.log("Strava token expired or expiring soon, refreshing...");
+      
+      if (!clientId || !clientSecret) {
+        console.error("Missing Strava credentials for refresh");
+        return null;
+      }
+
+      if (!refreshToken) {
+        console.error("Missing refresh token in database");
+        return null;
+      }
+
       try {
         const response = await axios.post("https://www.strava.com/oauth/token", {
-          client_id: process.env.STRAVA_CLIENT_ID,
-          client_secret: process.env.STRAVA_CLIENT_SECRET,
+          client_id: parseInt(clientId, 10),
+          client_secret: clientSecret,
           refresh_token: refreshToken,
           grant_type: "refresh_token",
         });
 
+        console.log("Strava token refreshed successfully");
         accessToken = response.data.access_token;
         refreshToken = response.data.refresh_token;
         expiresAt = response.data.expires_at;
@@ -106,10 +132,16 @@ async function startServer() {
             accessToken,
             refreshToken,
             expiresAt,
+            updatedAt: Date.now()
           }
         }, { merge: true });
-      } catch (error) {
-        console.error("Failed to refresh Strava token:", error);
+      } catch (error: any) {
+        console.error("Failed to refresh Strava token:", error.response?.data || error.message);
+        // If the refresh token is invalid (400), we might need to ask the user to re-authenticate
+        if (error.response?.status === 400) {
+          console.warn("Refresh token might be invalid, marking stravaConnected as false");
+          await userRef.set({ stravaConnected: false }, { merge: true });
+        }
         return null;
       }
     }
@@ -135,6 +167,98 @@ async function startServer() {
     } catch (error: any) {
       console.error("Failed to fetch Strava activities:", error.response?.data || error.message);
       res.status(500).json({ error: "Failed to fetch activities" });
+    }
+  });
+
+  // AI Endpoints
+  app.post("/api/ai/insight", async (req, res) => {
+    try {
+      const { prompt } = req.body;
+      const message = await anthropic.messages.create({
+        model: "claude-3-5-haiku-20241022",
+        max_tokens: 100,
+        messages: [{ role: "user", content: prompt }],
+      });
+      res.json({ text: (message.content[0] as any).text });
+    } catch (error: any) {
+      console.error("Insight error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/ai/plan", async (req, res) => {
+    try {
+      const { prompt } = req.body;
+      const response = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 2000,
+        messages: [{ role: "user", content: prompt }],
+      });
+      res.json({ text: (response.content[0] as any).text });
+    } catch (error: any) {
+      console.error("Plan error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/ai/nutrition", async (req, res) => {
+    try {
+      const { prompt } = req.body;
+      const response = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }],
+      });
+      res.json({ text: (response.content[0] as any).text });
+    } catch (error: any) {
+      console.error("Nutrition error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/ai/advice", async (req, res) => {
+    try {
+      const { systemInstruction, messages, tools } = req.body;
+      
+      // Handle streaming manually or just return the whole thing for simplicity first?
+      // The client expects a stream if possible.
+      // For now, let's do a non-streaming response to ensure it works, then add streaming if needed.
+      const response = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 1024,
+        system: systemInstruction,
+        tools: tools,
+        messages: messages,
+      });
+
+      res.json(response);
+    } catch (error: any) {
+      console.error("Advice error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/ai/speech", async (req, res) => {
+    if (!geminiAi) return res.status(400).json({ error: "Gemini not configured for TTS" });
+    try {
+      const { text, voiceName } = req.body;
+      const response = await geminiAi.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: `Dis de manière motivante et professionnelle: ${text}` }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName },
+            },
+          },
+        },
+      });
+      const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      res.json({ audioData });
+    } catch (error: any) {
+      console.error("Speech error:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -164,10 +288,18 @@ async function startServer() {
     const redirectUri = buildRedirectUri(req);
     console.log("Callback redirect_uri used for token exchange:", redirectUri);
 
+    const clientId = process.env.STRAVA_CLIENT_ID?.trim();
+    const clientSecret = process.env.STRAVA_CLIENT_SECRET?.trim();
+
+    if (!clientId || !clientSecret) {
+      console.error("Missing Strava credentials for token exchange");
+      return res.status(500).send("Configuration error");
+    }
+
     try {
       const response = await axios.post("https://www.strava.com/oauth/token", {
-        client_id: process.env.STRAVA_CLIENT_ID,
-        client_secret: process.env.STRAVA_CLIENT_SECRET,
+        client_id: parseInt(clientId, 10),
+        client_secret: clientSecret,
         code,
         grant_type: "authorization_code",
         redirect_uri: redirectUri,

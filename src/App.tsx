@@ -58,7 +58,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { AthleteProfile, Workout, ChatMessage, Sport, SecondaryRace } from './types';
-import { generateTrainingPlan, getCoachAdvice, generateSpeech, generateDailyCoachInsight, getNutritionAdvice } from './services/gemini';
+import { generateTrainingPlan, getCoachAdvice, generateSpeech, generateDailyCoachInsight, getNutritionAdvice } from './services/aiService';
 import { 
   auth, 
   db, 
