@@ -93,6 +93,11 @@ export async function generateTrainingPlan(profile: AthleteProfile, chatHistory:
   }
 }
 
+// ============================================================
+// getCoachAdvice — VERSION STREAMING (SSE)
+// Lit les tokens au fur et à mesure depuis /api/ai/advice
+// et les transmet au callback onStream pour affichage live.
+// ============================================================
 export async function getCoachAdvice(
   message: string, 
   history: { role: 'user' | 'model', content: string }[], 
@@ -148,7 +153,6 @@ export async function getCoachAdvice(
   const messages: any[] = [];
   for (let i = 0; i < history.length; i++) {
     const h = history[i];
-    // If the message is the same as the current one and it's from the same role, skip it to avoid duplicates
     if (i === history.length - 1 && h.role === 'user' && h.content === message) {
       continue;
     }
@@ -205,30 +209,74 @@ export async function getCoachAdvice(
   }];
 
   try {
-    // Non-streaming for now to keep it simple with the server bridge
-    const response = await axios.post('/api/ai/advice', {
-      systemInstruction,
-      messages,
-      tools
+    const response = await fetch('/api/ai/advice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ systemInstruction, messages, tools }),
     });
 
-    const data = response.data;
+    if (!response.ok || !response.body) {
+      const errorText = await response.text().catch(() => 'Erreur inconnue');
+      throw new Error(errorText || `HTTP ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
     let fullText = "";
     let functionCalls: any[] = [];
+    let errorMessage: string | null = null;
+    let buffer = ""; // buffer pour les lignes SSE incomplètes
 
-    for (const block of data.content) {
-      if (block.type === 'text') {
-        fullText += block.text;
-      }
-      if (block.type === 'tool_use') {
-        functionCalls.push({
-          name: block.name,
-          args: block.input
-        });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Un événement SSE se termine par \n\n
+      const events = buffer.split("\n\n");
+      buffer = events.pop() || ""; // garde la dernière partie potentiellement incomplète
+
+      for (const rawEvent of events) {
+        if (!rawEvent.trim()) continue;
+
+        // Parse les lignes "event: ..." et "data: ..."
+        let eventType = "message";
+        let dataStr = "";
+        for (const line of rawEvent.split("\n")) {
+          if (line.startsWith("event:")) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            dataStr += line.slice(5).trim();
+          }
+        }
+
+        if (!dataStr) continue;
+
+        let data: any;
+        try {
+          data = JSON.parse(dataStr);
+        } catch {
+          continue;
+        }
+
+        if (eventType === "text" && typeof data.delta === "string") {
+          fullText += data.delta;
+          if (onStream) onStream(fullText); // le callback reçoit le texte cumulé
+        } else if (eventType === "tool_calls" && Array.isArray(data.functionCalls)) {
+          functionCalls = data.functionCalls;
+        } else if (eventType === "error") {
+          errorMessage = data.message || "Erreur de streaming";
+        } else if (eventType === "done") {
+          // stream terminé proprement
+        }
       }
     }
 
-    if (onStream) onStream(fullText);
+    if (errorMessage) {
+      return { text: `Désolé, j'ai rencontré une erreur avec le coach : ${errorMessage}. Peux-tu réessayer ?` };
+    }
 
     return {
       text: fullText || "Plan mis à jour. On continue !",
@@ -236,7 +284,7 @@ export async function getCoachAdvice(
     };
   } catch (error: any) {
     console.error("Error getting coach advice:", error);
-    const errorMsg = error.response?.data?.error || error.message;
+    const errorMsg = error.message || "Erreur inconnue";
     return { text: `Désolé, j'ai rencontré une erreur avec le coach : ${errorMsg}. Peux-tu réessayer ?` };
   }
 }
