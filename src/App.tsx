@@ -535,15 +535,32 @@ export default function App() {
     }
   };
 
+  // ============================================================
+  // FIX : Génération du plan nutritionnel
+  // - setDoc avec merge: true pour NE PAS écraser le reste du profil
+  // - On écrit uniquement le champ nutritionPlan (pas tout le profile)
+  // - setProfile avec callback pour éviter les race conditions
+  // ============================================================
   const handleGenerateNutrition = async () => {
     if (!user || !profile) return;
     try {
       setIsLoading(true);
       const advice = await getNutritionAdvice(profile, workouts);
       if (advice) {
-        const updatedProfile = { ...profile, nutritionPlan: advice };
-        setProfile(updatedProfile);
-        await setDoc(doc(db, `users/${user.uid}`), updatedProfile);
+        // 1. Mise à jour locale immédiate pour l'affichage
+        setProfile(prev => ({ ...prev, nutritionPlan: advice }));
+
+        // 2. Persistance ciblée en Firestore : on ne touche qu'au champ nutritionPlan
+        //    Le merge: true empêche l'écrasement des autres champs (tokens Strava, PRs, etc.)
+        await setDoc(
+          doc(db, `users/${user.uid}`),
+          {
+            nutritionPlan: advice,
+            updatedAt: Date.now()
+          },
+          { merge: true }
+        );
+
         showToast("Plan nutritionnel généré !", "success");
       } else {
         showToast("Impossible de générer le plan nutritionnel.", "error");
