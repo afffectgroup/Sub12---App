@@ -47,7 +47,6 @@ async function startServer() {
   app.use(cookieParser());
 
   // Helper : reconstruit le redirectUri de façon cohérente entre /url et /callback
-  // Utilise STRAVA_DOMAIN en priorité (à définir dans Railway = "www.sub12.fr")
   function buildRedirectUri(req: express.Request): string {
     const host = process.env.STRAVA_DOMAIN || req.get("x-forwarded-host") || req.get("host");
     const protocol = (req.get("x-forwarded-proto") || "https").split(",")[0].trim();
@@ -108,7 +107,6 @@ async function startServer() {
     const clientId = process.env.STRAVA_CLIENT_ID?.trim();
     const clientSecret = process.env.STRAVA_CLIENT_SECRET?.trim();
 
-    // Check if expired (with 5 min buffer)
     if (Date.now() / 1000 > (expiresAt || 0) - 300) {
       console.log("Strava token expired or expiring soon, refreshing...");
       
@@ -145,7 +143,6 @@ async function startServer() {
         }, { merge: true });
       } catch (error: any) {
         console.error("Failed to refresh Strava token:", error.response?.data || error.message);
-        // If the refresh token is invalid (400), we might need to ask the user to re-authenticate
         if (error.response?.status === 400) {
           console.warn("Refresh token might be invalid, marking stravaConnected as false");
           await userRef.set({ stravaConnected: false }, { merge: true });
@@ -168,7 +165,7 @@ async function startServer() {
       console.log("Fetching Strava activities for UID:", uid);
       const response = await axios.get("https://www.strava.com/api/v3/athlete/activities", {
         headers: { Authorization: `Bearer ${token}` },
-        params: { per_page: 30 }, // Fetch more activities
+        params: { per_page: 30 },
       });
       console.log(`Fetched ${response.data.length} activities for UID:`, uid);
       res.json(response.data);
@@ -251,14 +248,33 @@ async function startServer() {
     }
   });
 
+  // ============================================================
+  // ADVICE ENDPOINT — STREAMING via Server-Sent Events (SSE)
+  // Le client reçoit les tokens au fur et à mesure.
+  // Gère aussi les tool_use (ex: updateWorkouts) en fin de stream.
+  // ============================================================
   app.post("/api/ai/advice", async (req, res) => {
     if (!process.env.ANTHROPIC_API_KEY) {
       return res.status(401).json({ error: "Clé API Anthropic manquante." });
     }
+
+    // Headers SSE
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // désactive le buffering côté proxy (Railway/Nginx)
+    res.flushHeaders();
+
+    // Helper pour envoyer un événement SSE proprement
+    const sendEvent = (event: string, data: any) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
     try {
       const { systemInstruction, messages, tools } = req.body;
-      
-      const response = await anthropic.messages.create({
+
+      const stream = anthropic.messages.stream({
         model: MODELS.smart,
         max_tokens: 2048,
         system: systemInstruction,
@@ -266,10 +282,77 @@ async function startServer() {
         messages: messages,
       });
 
-      res.json(response);
+      // Accumulateur pour reconstruire les tool_use à la fin
+      // (l'API stream les args JSON en deltas)
+      const toolUses: { id: string; name: string; input: any; _rawJson: string }[] = [];
+      let currentBlockIndex: number | null = null;
+
+      stream.on("text", (textDelta: string) => {
+        // Chaque chunk de texte est envoyé tel quel au client
+        sendEvent("text", { delta: textDelta });
+      });
+
+      stream.on("streamEvent", (event: any) => {
+        // On capte le démarrage d'un bloc tool_use pour initialiser l'accumulateur
+        if (event.type === "content_block_start" && event.content_block?.type === "tool_use") {
+          toolUses.push({
+            id: event.content_block.id,
+            name: event.content_block.name,
+            input: null,
+            _rawJson: "",
+          });
+          currentBlockIndex = event.index;
+        }
+
+        // Les deltas d'input JSON arrivent par morceaux
+        if (
+          event.type === "content_block_delta" &&
+          event.delta?.type === "input_json_delta" &&
+          toolUses.length > 0
+        ) {
+          const last = toolUses[toolUses.length - 1];
+          last._rawJson += event.delta.partial_json || "";
+        }
+
+        // Fin du bloc : on parse le JSON complet
+        if (event.type === "content_block_stop" && currentBlockIndex === event.index) {
+          const last = toolUses[toolUses.length - 1];
+          if (last && last._rawJson) {
+            try {
+              last.input = JSON.parse(last._rawJson);
+            } catch (e) {
+              console.error("Failed to parse tool input JSON:", e, last._rawJson);
+              last.input = {};
+            }
+          }
+          currentBlockIndex = null;
+        }
+      });
+
+      stream.on("error", (err: any) => {
+        console.error("Anthropic stream error:", err);
+        sendEvent("error", { message: err.message || "Stream error" });
+        res.end();
+      });
+
+      // Attend la fin du stream
+      await stream.finalMessage();
+
+      // Envoie les tool calls (s'il y en a) + un signal de fin
+      const functionCalls = toolUses
+        .filter((t) => t.input !== null)
+        .map((t) => ({ name: t.name, args: t.input }));
+
+      if (functionCalls.length > 0) {
+        sendEvent("tool_calls", { functionCalls });
+      }
+
+      sendEvent("done", {});
+      res.end();
     } catch (error: any) {
       console.error("Advice error:", error);
-      res.status(500).json({ error: error.message });
+      sendEvent("error", { message: error.message || "Unknown error" });
+      res.end();
     }
   });
 
@@ -318,8 +401,6 @@ async function startServer() {
 
     const isLogin = uid === "login";
 
-    // FIX : redirect_uri doit être identique à celui utilisé lors de l'autorisation.
-    // Sans cette ligne, Strava répond "invalid_grant" → "Failed to exchange token".
     const redirectUri = buildRedirectUri(req);
     console.log("Callback redirect_uri used for token exchange:", redirectUri);
 
@@ -343,7 +424,6 @@ async function startServer() {
       const { access_token, refresh_token, expires_at, athlete } = response.data;
 
       if (!isLogin) {
-        // Store in Firestore for existing user
         const userRef = db.collection("users").doc(uid as string);
         await userRef.set({
           stravaConnected: true,
